@@ -6,6 +6,11 @@ import { MainTiles } from './MainTiles';
 import { ProjectsGallery } from './ProjectsGallery';
 import { selectedTile } from '@/lib/heroSequenceState';
 
+/** Room left above the gallery when it is scrolled into view — enough to clear
+ *  the fixed nav pills and the docked logo, which would otherwise sit on top of
+ *  the gallery's own filter row. */
+const GALLERY_MARGIN = 72;
+
 /**
  * The main landing content that sits between <Hero /> and <Footer />:
  * the tile row's layout, and — only while a tile is selected — the projects
@@ -22,6 +27,20 @@ export function MainLayout() {
     setSelectedId(selectedTile.get());
     return selectedTile.on('change', (v) => setSelectedId(v as string | null));
   }, []);
+
+  // Opening a gallery pushes it in below the tiles, mostly off the bottom of
+  // the screen — so bring it into view. One frame's wait lets the newly mounted
+  // panel land in the layout before its position is read.
+  useEffect(() => {
+    if (!selectedId) return;
+    const raf = requestAnimationFrame(() => {
+      const el = galleryRef.current;
+      if (!el) return;
+      const top = window.scrollY + el.getBoundingClientRect().top - GALLERY_MARGIN;
+      window.scrollTo({ top, behavior: 'smooth' });
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [selectedId]);
 
   // Click on empty space closes the gallery. A click counts as "inside" only if
   // it lands on one of the sequence's tiles or on the open gallery.

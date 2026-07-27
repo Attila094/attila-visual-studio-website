@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { Bebas_Neue } from 'next/font/google';
 import { motion, type MotionValue } from 'framer-motion';
 import { mainTiles } from '@/content/mainTiles';
+import { markCaptionTyped, typedCaptions } from '@/lib/introPlayed';
 import { TYPE_MS } from './HeroImageSequence';
 
 const bebas = Bebas_Neue({ subsets: ['latin'], weight: '400' });
@@ -15,12 +16,20 @@ const SETTLED_OPACITY = 0.1;
 export const captionTexts = mainTiles.map((t) => t.title);
 
 /**
- * Which captions have already typed themselves in during THIS page load.
- * Module-scoped on purpose: the caption unmounts when the sequence is scrolled
- * backwards, so component state would forget — and the type effect would
- * replay on the way back down. This lives as long as the tab does.
+ * Which captions have already typed themselves in.
+ *
+ * Module-scoped rather than component state because the caption unmounts when
+ * the sequence is scrolled backwards, and state would forget — the type effect
+ * would replay on the way back down. It is seeded from (and written through to)
+ * sessionStorage, so the effect also doesn't replay on a reload: it plays the
+ * first time the site is loaded and no more.
  */
-const typedOnce = new Set<number>();
+let typedOnce: Set<number> | null = null;
+function typedSet(): Set<number> {
+  // Lazily, because sessionStorage doesn't exist while rendering on the server.
+  if (!typedOnce) typedOnce = typedCaptions();
+  return typedOnce;
+}
 
 /**
  * The caption for the image currently at full size — centred on the page, one
@@ -51,20 +60,21 @@ export function SequenceCaptions({
   // one frame too late and flash the whole next caption on screen.
   const [typed, setTyped] = useState({ i: -1, n: 0, typing: false });
   const current = typed.i === activeIndex;
-  const seenBefore = activeIndex >= 0 && typedOnce.has(activeIndex);
+  const seenBefore = activeIndex >= 0 && typedSet().has(activeIndex);
   const count = current ? typed.n : seenBefore ? captionTexts[activeIndex].length : 0;
   const typing = current ? typed.typing : !seenBefore;
 
   useEffect(() => {
     if (activeIndex < 0) return;
     const text = captionTexts[activeIndex];
-    if (typedOnce.has(activeIndex)) {
+    if (typedSet().has(activeIndex)) {
       setTyped({ i: activeIndex, n: text.length, typing: false });
       return;
     }
     // Claim it up front, so a quick scroll back and forth mid-type doesn't
-    // start the animation over.
-    typedOnce.add(activeIndex);
+    // start the animation over — and persist it, so a reload doesn't either.
+    typedSet().add(activeIndex);
+    markCaptionTyped(activeIndex);
     setTyped({ i: activeIndex, n: 0, typing: true });
     let raf = 0;
     const start = performance.now();

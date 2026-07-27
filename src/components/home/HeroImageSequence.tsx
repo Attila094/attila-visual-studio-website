@@ -6,6 +6,7 @@ import { motion, useMotionValue, useTransform, type MotionValue } from 'framer-m
 import { heroSequenceImages } from '@/content/heroSequence';
 import { mainTiles } from '@/content/mainTiles';
 import { selectedTile } from '@/lib/heroSequenceState';
+import { introAlreadyPlayed } from '@/lib/introPlayed';
 import { SequenceCaptions } from './SequenceCaptions';
 
 const bebas = Bebas_Neue({ subsets: ['latin'], weight: '400' });
@@ -53,6 +54,22 @@ const ROW_ITEM_GAP = 10;
 const RADIUS = 34;
 const PARKED_RADIUS = 8;
 const TILE_RADIUS = 16; // matches MainTiles' rounded-2xl
+/** Below this width the phone layout applies. Matches Tailwind's `sm`. */
+const MOBILE_MAX = 640;
+/** On a phone the big image runs at twice the size the gutters would allow,
+ *  and the corners come in to 40% of their radius — 34px of rounding reads as
+ *  a squircle at that scale. The parked images keep their size and only lose
+ *  the rounding. */
+const MOBILE_SLOT_SCALE = 2;
+const MOBILE_RADIUS_SCALE = 0.4;
+/** On a phone the parked images shrink to whatever makes all four fit beside
+ *  the doubled big image, and the spacing between them halves. */
+const MOBILE_ROW_GAP = ROW_ITEM_GAP / 2;
+const MOBILE_SIDE_MARGIN = 12;
+/** Never shrink a parked image past this — below it there is nothing to see. */
+const MIN_PARKED = 8;
+/** Clearance kept around the tile grid when it is scrolled into view. */
+const TILES_MARGIN = 16;
 /** Scroll runway, in viewport heights. */
 export const RUNWAY_VH = 3;
 /** Progress at which the first image takes over from the bouncing ball. */
@@ -115,6 +132,9 @@ interface Geometry {
   slot: Rect;
   thumb: Rect;
   tiles: Rect[];
+  /** Size, rounding and spacing of a parked image. Carried separately because
+   *  on a phone the slot grows while these shrink to fit beside it. */
+  parked: { w: number; h: number; r: number; gap: number };
 }
 
 const emptyRect = (): Rect => ({ top: 0, left: 0, w: 0, h: 0, r: 0 });
@@ -129,11 +149,10 @@ const emptyRect = (): Rect => ({ top: 0, left: 0, w: 0, h: 0, r: 0 });
  * is on its way down, which is what makes that shuffle animate.
  */
 function parkedRect(i: number, kc: number, g: Geometry): Rect {
-  const w = g.slot.w * PARKED;
-  const h = g.slot.h * PARKED;
+  const { w, h, r, gap } = g.parked;
   const fromRight = kc - 1 - i;
-  const right = g.slot.left - ROW_ITEM_GAP - fromRight * (w + ROW_ITEM_GAP);
-  return { top: g.slot.top, left: right - w, w, h, r: PARKED_RADIUS };
+  const right = g.slot.left - gap - fromRight * (w + gap);
+  return { top: g.slot.top, left: right - w, w, h, r };
 }
 
 /** How many images have parked at progress `p` — fractional exactly while one
@@ -182,6 +201,7 @@ export function HeroImageSequence() {
     slot: emptyRect(),
     thumb: emptyRect(),
     tiles: [],
+    parked: { w: 0, h: 0, r: PARKED_RADIUS, gap: ROW_ITEM_GAP },
   });
 
   // Caption state. Only one caption is ever on screen: it types in during its
@@ -215,6 +235,10 @@ export function HeroImageSequence() {
 
   useEffect(() => {
     let raf = 0;
+    // The pause exists to give the caption's type-in room to play. On a repeat
+    // load there is no type-in left, so there is nothing to wait for and the
+    // sequence scrubs freely. Read once, on the client, where storage exists.
+    const holdMs = introAlreadyPlayed() ? 0 : HOLD_MS;
 
     const update = () => {
       raf = 0;
@@ -246,10 +270,31 @@ export function HeroImageSequence() {
         slotW = maxW;
         slotH = slotW / ASPECT;
       }
+
+      const mobile = vw < MOBILE_MAX;
+      let parkedW = slotW * PARKED;
+      let parkedGap = ROW_ITEM_GAP;
+      let radius = RADIUS;
+      if (mobile) {
+        radius = RADIUS * MOBILE_RADIUS_SCALE;
+        parkedGap = MOBILE_ROW_GAP;
+        // Doubled, but never wider than the screen or taller than the band.
+        slotW = Math.min(slotW * MOBILE_SLOT_SCALE, vw - 2 * SIDE_MARGIN, band * ASPECT);
+        slotH = slotW / ASPECT;
+        // The doubled image leaves too little gutter for the row at its old
+        // size, so size the parked images to the room that's actually left:
+        // N-1 of them plus the gaps between them and the one against the big
+        // image, inside the left gutter. Never larger than they'd be anyway.
+        const gutter = (vw - slotW) / 2;
+        const room = gutter - MOBILE_SIDE_MARGIN - (N - 1) * parkedGap;
+        parkedW = Math.max(MIN_PARKED, Math.min(parkedW, room / (N - 1)));
+      }
+      const parkedH = parkedW / ASPECT;
+
       // Centred vertically in the band too, so a width clamp doesn't leave the
       // image hanging off the top of a tall band of dead space.
       const top = topMin + Math.max(0, (band - slotH) / 2);
-      const slot: Rect = { top, left: (vw - slotW) / 2, w: slotW, h: slotH, r: RADIUS };
+      const slot: Rect = { top, left: (vw - slotW) / 2, w: slotW, h: slotH, r: radius };
 
       const tw = slotW * THUMB;
       const th = slotH * THUMB;
@@ -258,7 +303,7 @@ export function HeroImageSequence() {
         left: slot.left + slotW + THUMB_GAP,
         w: tw,
         h: th,
-        r: RADIUS * THUMB,
+        r: radius * THUMB,
       };
 
       // The parked row needs no precomputation — it is derived from `slot`,
@@ -274,6 +319,12 @@ export function HeroImageSequence() {
         slot,
         thumb,
         tiles,
+        parked: {
+          w: parkedW,
+          h: parkedH,
+          r: mobile ? PARKED_RADIUS * MOBILE_RADIUS_SCALE : PARKED_RADIUS,
+          gap: parkedGap,
+        },
       };
 
       // --- Progress, with holds -------------------------------------------
@@ -308,7 +359,7 @@ export function HeroImageSequence() {
         // page. (The captions themselves are free to come and go — only their
         // type-in is one-shot, and that's latched inside <SequenceCaptions>.)
         while (s.nextHold < HOLD_POINTS.length && p >= HOLD_POINTS[s.nextHold]) {
-          s.holdUntil = now + HOLD_MS;
+          s.holdUntil = now + holdMs;
           s.lockY = y;
           s.nextHold += 1;
         }
@@ -353,6 +404,21 @@ export function HeroImageSequence() {
         s.landed = home;
         setLanded(home);
         if (!home) selectedTile.set(null);
+        // On a phone the tiles stack three rows deep and land half off-screen,
+        // so bring the whole grid into view. DOWN only: scrolling up would drop
+        // progress back under 1, un-land the tiles and re-trigger this.
+        else if (mobile && tiles.length) {
+          const gridTop = window.scrollY + tiles[0].top;
+          const last = tiles[tiles.length - 1];
+          const gridH = last.top + last.h - tiles[0].top;
+          const target =
+            gridH + 2 * TILES_MARGIN <= vh
+              ? gridTop - (vh - gridH) / 2 // fits: centre it
+              : gridTop - TILES_MARGIN; // taller than the screen: top-align
+          if (target > window.scrollY) {
+            window.scrollTo({ top: target, behavior: 'smooth' });
+          }
+        }
       }
     };
 
