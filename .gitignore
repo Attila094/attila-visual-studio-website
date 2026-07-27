@@ -1,0 +1,25 @@
+/node_modules
+/.next
+/out
+/build
+*.tsbuildinfo
+next-env.d.ts
+.DS_Store
+.env*.local
+
+# Local machine state (kept out; .claude/launch.json IS tracked).
+/.claude/settings.local.json
+
+# Working media: the raw renders, photography and footage the site is built
+# from — ~1.4 GB, and several files are over GitHub's 100 MB per-file limit.
+# The optimised web copies the site actually serves live in /public and are
+# tracked. Keep these originals in your own backup, not in git.
+/projects
+/3d printing
+
+# Design references and source video sitting in the project root.
+/*.jpg
+/*.png
+/*.svg
+/*.mp4
+/*.mov

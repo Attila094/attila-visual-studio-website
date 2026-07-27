@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="hu">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Attila Visual Studio — Preview Sequence</title>
+
+<!-- Bebas Neue: same family the site hero uses for "VISUAL STUDIO", so the
+     place-name text keeps the identical font style. Swap if you self-host. -->
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&display=swap" rel="stylesheet" />
+
+<style>
+  /* ============================================================
+     THEME / TOKENS
+     The animation timings are written onto :root from JS (see the
+     CONFIG object) so there is a single source of truth for timing.
+     ============================================================ */
+  :root {
+    --bg: #000000;
+    --text: #ffffff;
+
+    /* These are set from JS (CONFIG.timing) on load — listed here as
+       documentation / sensible fallbacks. */
+    --tile-dur: 1s;        /* fade + scale in/out duration            */
+    --text-fade: 0.6s;     /* half of a full text cross-fade          */
+    --rest-opacity: 0.25;  /* resting opacity of a visible tile (25%) */
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body {
+    margin: 0;
+    height: 100%;
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Bebas Neue', 'Arial Narrow', sans-serif;
+    overflow: hidden;
+  }
+
+  /* Full-viewport stage. Everything is absolutely positioned inside it,
+     so nothing reflows during the sequence (transform/opacity only). */
+  .stage {
+    position: fixed;
+    inset: 0;
+    display: grid;
+    place-items: center;
+  }
+
+  /* ---------- Central title ------------------------------------ */
+  .title {
+    position: relative;
+    z-index: 10;
+    margin: 0;
+    padding: 0.2em 0.4em;
+    text-align: center;
+    text-transform: uppercase;
+    letter-spacing: 0.55em;
+    /* pull the letter-spacing back off the right edge so it stays centered */
+    text-indent: 0.55em;
+    line-height: 1;
+    font-weight: 400;
+    font-size: clamp(1.6rem, 4.4vw, 3.6rem);
+    color: var(--text);
+    cursor: pointer;
+    user-select: none;
+    /* opacity is the only animated property on the title (cross-fade) */
+    opacity: 1;
+    transition: opacity var(--text-fade) ease;
+    background: transparent;
+    border: 0;
+    outline: none;
+  }
+  .title:focus-visible { outline: 1px solid rgba(255,255,255,0.4); outline-offset: 0.5em; }
+  .title.is-fading { opacity: 0; }
+
+  /* Subtle "tap to play" hint, only visible while idle. */
+  .hint {
+    position: absolute;
+    z-index: 10;
+    top: calc(50% + clamp(2.2rem, 6vw, 4rem));
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 0.72rem;
+    letter-spacing: 0.35em;
+    text-indent: 0.35em;
+    color: rgba(255,255,255,0.35);
+    text-transform: uppercase;
+    pointer-events: none;
+    transition: opacity 0.6s ease;
+    animation: hintPulse 2.6s ease-in-out infinite;
+  }
+  .stage.is-playing .hint { opacity: 0; animation: none; }
+  @keyframes hintPulse { 0%,100% { opacity: 0.2; } 50% { opacity: 0.5; } }
+
+  /* ---------- Placeholder tiles -------------------------------- */
+  /* Each tile is centered on its (--x, --y) anchor point via
+     translate(-50%,-50%); the scale is composed into the SAME transform
+     so only transform + opacity ever animate (GPU friendly). */
+  .tile {
+    position: absolute;
+    left: var(--x);
+    top: var(--y);
+    width: var(--w);
+    aspect-ratio: var(--ar);
+    margin: 0;
+    overflow: hidden;
+    border-radius: 2px;
+    background: #111;
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.85);
+    transition:
+      opacity var(--tile-dur) ease,
+      transform var(--tile-dur) cubic-bezier(0.22, 1, 0.36, 1);
+    will-change: transform, opacity;
+  }
+  /* Visible resting state = 25% opacity, full scale. */
+  .tile.is-in {
+    opacity: var(--rest-opacity);
+    transform: translate(-50%, -50%) scale(1);
+  }
+  /* Gentle affordance: bring a tile forward on hover while it is shown. */
+  .tile.is-in:hover { opacity: 0.85; }
+
+  .tile__media { position: absolute; inset: 0; }
+  .tile__el {                    /* injected <img> / <video> fill the box */
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+  /* Empty-state placeholder shown until you inject media. */
+  .tile__ph {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    background:
+      repeating-linear-gradient(45deg, #171717 0 12px, #131313 12px 24px);
+    color: rgba(255,255,255,0.4);
+  }
+  .tile__ph span {
+    font-size: 0.9rem;
+    letter-spacing: 0.25em;
+    text-indent: 0.25em;
+  }
+  .tile__label {                 /* tiny caption in the corner of each box */
+    position: absolute;
+    left: 0.5rem;
+    bottom: 0.4rem;
+    z-index: 2;
+    font-size: 0.62rem;
+    letter-spacing: 0.22em;
+    color: rgba(255,255,255,0.75);
+    text-shadow: 0 1px 6px rgba(0,0,0,0.8);
+    pointer-events: none;
+  }
+
+  /* ---------- Tile positions (match "project preview layout.jpg") ----
+     --x/--y = center anchor as a % of the viewport.
+     --w     = width (clamped/responsive).  --ar = aspect ratio. -------- */
+  #tile-1 { --x: 37%; --y: 20%; --w: clamp(200px, 22vw, 430px); --ar: 4 / 3; } /* top-left  landscape */
+  #tile-2 { --x: 69%; --y: 19%; --w: clamp(190px, 19vw, 380px); --ar: 1 / 1; } /* top-right square    */
+  #tile-3 { --x: 16%; --y: 51%; --w: clamp(160px, 15vw, 320px); --ar: 3 / 4; } /* left      portrait  */
+  #tile-4 { --x: 50%; --y: 80%; --w: clamp(190px, 19vw, 380px); --ar: 1 / 1; } /* bottom    square    */
+  #tile-5 { --x: 86%; --y: 67%; --w: clamp(160px, 15vw, 320px); --ar: 3 / 4; } /* right     portrait  */
+
+  /* Respect reduced-motion: keep the cross-fades, drop the scaling. */
+  @media (prefers-reduced-motion: reduce) {
+    .tile,
+    .tile.is-in { transform: translate(-50%, -50%) scale(1); }
+  }
+</style>
+</head>
+<body>
+  <main class="stage" id="stage">
+    <!-- The one title element; its text is swapped with a cross-fade. -->
+    <button class="title" id="title" type="button" aria-live="polite">VISUAL STUDIO</button>
+    <p class="hint" id="hint">tap to play</p>
+
+    <!-- 5 reusable tiles. Content is injected per segment (see CONFIG).
+         Target them by id (#tile-1 … #tile-5) or class (.tile). -->
+    <figure class="tile" id="tile-1" data-pos="1">
+      <div class="tile__media"></div><figcaption class="tile__label"></figcaption>
+    </figure>
+    <figure class="tile" id="tile-2" data-pos="2">
+      <div class="tile__media"></div><figcaption class="tile__label"></figcaption>
+    </figure>
+    <figure class="tile" id="tile-3" data-pos="3">
+      <div class="tile__media"></div><figcaption class="tile__label"></figcaption>
+    </figure>
+    <figure class="tile" id="tile-4" data-pos="4">
+      <div class="tile__media"></div><figcaption class="tile__label"></figcaption>
+    </figure>
+    <figure class="tile" id="tile-5" data-pos="5">
+      <div class="tile__media"></div><figcaption class="tile__label"></figcaption>
+    </figure>
+  </main>
+
+<script>
+/* ================================================================
+   CONFIG — everything you'll want to tweak lives here.
+   ----------------------------------------------------------------
+   • idleText ....... resting title, shown before/after the sequence.
+   • segments[] ..... one entry per 10-second segment. `text` is the
+                      place-name; `media` holds the 5 tiles' content in
+                      tile order [#tile-1 … #tile-5].
+   • timing ......... all durations, in SECONDS.
+
+   HOW TO ADD REAL IMAGES / VIDEOS
+   Each media slot accepts:
+     null / ""                        → empty labelled placeholder
+     "path/to/photo.jpg"              → auto <img>
+     "path/to/clip.mp4"               → auto <video> (muted, looped)
+     { type:"video", src:"…", poster:"…" }  → explicit control
+     { type:"image", src:"…", alt:"…" }     → explicit control
+   ================================================================ */
+const CONFIG = {
+  idleText: 'VISUAL STUDIO',
+
+  segments: [
+    // [#tile-1(TL), #tile-2(TR), #tile-3(L), #tile-4(BC), #tile-5(R)]
+    { text: 'RÁD',     media: [null, null, null, null, null] },
+    { text: 'HÉVÍZ',   media: [null, null, null, null, null] },
+    { text: 'HELIKON', media: [null, null, null, null, null] },
+    { text: 'MISINA',  media: [null, null, null, null, null] },
+  ],
+
+  timing: {
+    segment:     10.0, // seconds per segment (4 × 10 = 40s total)
+    tileInDur:    1.0, // tile fade + scale-in duration
+    tileStagger:  1.5, // delay between consecutive tiles appearing
+    tileOutAt:    9.0, // when tiles begin leaving, within a segment
+    tileOutDur:   1.0, // tile fade + scale-out duration
+    textFade:     1.2, // full text cross-fade (out + in)
+    restOpacity: 0.25, // resting opacity of a visible tile (25%)
+  },
+};
+
+/* ================================================================
+   ENGINE — a tiny timeline scheduler. You shouldn't need to edit
+   below this line to adjust the show; use CONFIG above.
+   ================================================================ */
+(function () {
+  const root   = document.documentElement;
+  const stage  = document.getElementById('stage');
+  const title  = document.getElementById('title');
+  const tiles  = [1, 2, 3, 4, 5].map((n) => document.getElementById('tile-' + n));
+
+  const T = CONFIG.timing;
+  let running = false;
+  let timers = [];           // every pending timeout id, cleared on reset
+
+  // Push CONFIG timings into CSS custom properties (single source of truth).
+  root.style.setProperty('--tile-dur', T.tileInDur + 's');
+  root.style.setProperty('--text-fade', (T.textFade / 2) + 's');
+  root.style.setProperty('--rest-opacity', String(T.restOpacity));
+
+  // Schedule fn to run `sec` seconds after play() starts.
+  function schedule(sec, fn) {
+    timers.push(setTimeout(fn, sec * 1000));
+  }
+
+  // -------- Text cross-fade -----------------------------------------------
+  // Fade current text out, swap the string, fade the new text in.
+  function setText(next) {
+    title.classList.add('is-fading');                 // opacity → 0
+    schedule.halfFade = T.textFade / 2 * 1000;
+    timers.push(setTimeout(() => {
+      title.textContent = next;
+      title.classList.remove('is-fading');            // opacity → 1
+    }, (T.textFade / 2) * 1000));
+  }
+
+  // -------- Media injection -----------------------------------------------
+  function makeMedia(entry, label) {
+    if (!entry) {                                     // empty placeholder
+      return '<div class="tile__ph"><span>' + label + '</span></div>';
+    }
+    const e = typeof entry === 'string' ? { src: entry } : entry;
+    const isVideo = e.type === 'video' || /\.(mp4|webm|mov)$/i.test(e.src || '');
+    if (isVideo) {
+      return '<video class="tile__el" src="' + e.src + '"'
+        + (e.poster ? ' poster="' + e.poster + '"' : '')
+        + ' muted loop autoplay playsinline></video>';
+    }
+    return '<img class="tile__el" src="' + e.src + '" alt="'
+      + (e.alt || label) + '" loading="lazy" decoding="async">';
+  }
+
+  // Fill all 5 tiles with a segment's content (done while they're hidden).
+  function loadSegmentMedia(i) {
+    const seg = CONFIG.segments[i];
+    tiles.forEach((tile, k) => {
+      const label = seg.text + ' · ' + String(k + 1).padStart(2, '0');
+      tile.querySelector('.tile__media').innerHTML = makeMedia(seg.media[k], label);
+      tile.querySelector('.tile__label').textContent = label;
+    });
+  }
+
+  // -------- Tile show / hide ----------------------------------------------
+  const tileIn  = (k) => tiles[k].classList.add('is-in');
+  const tilesOut = () => tiles.forEach((t) => t.classList.remove('is-in'));
+
+  // -------- Build + run the 40s timeline ----------------------------------
+  function play() {
+    if (running) return;
+    running = true;
+    stage.classList.add('is-playing');
+
+    const seg = T.segment;
+
+    CONFIG.segments.forEach((s, i) => {
+      const base = i * seg;
+
+      // (a) place-name cross-fade at the top of the segment
+      schedule(base, () => setText(s.text));
+      // (b) load this segment's media into the (hidden) tiles
+      schedule(base, () => loadSegmentMedia(i));
+      // (c) tiles fade + scale in, staggered by tileStagger
+      for (let k = 0; k < tiles.length; k++) {
+        schedule(base + k * T.tileStagger, () => tileIn(k));
+      }
+      // (d) tiles fade + scale out at the tileOutAt mark
+      schedule(base + T.tileOutAt, tilesOut);
+    });
+
+    // Outro: as the last tiles leave, morph the name back to the brand…
+    const end = CONFIG.segments.length * seg;         // 40s
+    schedule(end - T.tileOutDur, () => setText(CONFIG.idleText));
+    // …then reset so the whole thing is clickable again.
+    schedule(end, reset);
+  }
+
+  function reset() {
+    timers.forEach(clearTimeout);
+    timers = [];
+    tilesOut();
+    title.classList.remove('is-fading');
+    title.textContent = CONFIG.idleText;
+    stage.classList.remove('is-playing');
+    running = false;
+  }
+
+  // -------- Trigger --------------------------------------------------------
+  title.addEventListener('click', play);
+  title.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); play(); }
+  });
+
+  // Expose for console tinkering / external control.
+  window.PreviewSequence = { play, reset, CONFIG };
+})();
+</script>
+</body>
+</html>
