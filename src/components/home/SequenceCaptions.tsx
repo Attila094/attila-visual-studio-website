@@ -5,13 +5,16 @@ import { Bebas_Neue } from 'next/font/google';
 import { motion, type MotionValue } from 'framer-motion';
 import { mainTiles } from '@/content/mainTiles';
 import { markCaptionTyped, typedCaptions } from '@/lib/introPlayed';
-import { TYPE_MS } from './HeroImageSequence';
+import { MOBILE_MAX, TYPE_MS } from './HeroImageSequence';
 
-const bebas = Bebas_Neue({ subsets: ['latin'], weight: '400' });
+const bebas = Bebas_Neue({ subsets: ['latin', 'latin-ext'], weight: '400' });
 
 /** While the letters are landing, and once they have. */
 const TYPING_OPACITY = 0.6;
 const SETTLED_OPACITY = 0.1;
+/** On a phone the caption sits in its own band above the images instead of over
+ *  them, so it holds one steady value rather than dimming once it has landed. */
+const MOBILE_OPACITY = 0.45;
 
 export const captionTexts = mainTiles.map((t) => t.title);
 
@@ -33,8 +36,9 @@ function typedSet(): Set<number> {
 
 /**
  * The caption for the image currently at full size — centred on the page, one
- * at a time. It types in over 2s at 60%, drops to 10% the moment the last
+ * at a time. It types in over TYPE_MS at 60%, drops to 10% the moment the last
  * letter lands, then drops behind the stage and dissolves as its image shrinks.
+ * On a phone it holds a flat 45% throughout instead of that 60→10 step.
  *
  * The dissolve arrives as a motion value and is applied to the wrapper, so it
  * can follow the scroll every frame while the 60→10% step stays an ordinary
@@ -44,6 +48,8 @@ export function SequenceCaptions({
   activeIndex,
   front,
   fade,
+  bandTop,
+  bandHeight,
 }: {
   /** The caption to show at the current scroll position; -1 before the first hold. */
   activeIndex: number;
@@ -51,7 +57,22 @@ export function SequenceCaptions({
   front: boolean;
   /** 1 → fully present, 0 → dissolved away. */
   fade: MotionValue<number>;
+  /** Top of the phone caption band — the bottom edge of the top bar. */
+  bandTop: MotionValue<number>;
+  /** Its height — down to the top edge of the big image. */
+  bandHeight: MotionValue<number>;
 }) {
+  // On a phone the caption goes ABOVE the images rather than across them: the
+  // wrapper IS the band between the top bar and the images, and the text is
+  // centred in it on both axes.
+  const [mobile, setMobile] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia(`(max-width: ${MOBILE_MAX - 1}px)`);
+    const sync = () => setMobile(mq.matches);
+    sync();
+    mq.addEventListener('change', sync);
+    return () => mq.removeEventListener('change', sync);
+  }, []);
   // The typing state carries the caption it belongs to, so a stale count can
   // never be painted against a new caption's text. When `activeIndex` moves,
   // this render already knows the state is for the previous one and derives
@@ -100,14 +121,26 @@ export function SequenceCaptions({
   return (
     <motion.div
       aria-hidden
-      style={{ opacity: fade }}
-      className={`pointer-events-none fixed inset-0 ${
+      style={{
+        opacity: fade,
+        top: mobile ? bandTop : undefined,
+        height: mobile ? bandHeight : undefined,
+      }}
+      className={`pointer-events-none fixed flex items-center justify-center px-6 ${
         front ? 'z-50' : 'z-20'
-      } flex items-center justify-center px-6`}
+      } ${mobile ? 'inset-x-0' : 'inset-0'}`}
     >
       <p
-        style={{ opacity: typing ? TYPING_OPACITY : SETTLED_OPACITY }}
-        className={`${bebas.className} w-full max-w-[110rem] text-center text-[clamp(3rem,16.5vw,14.0625rem)] uppercase leading-[0.9] tracking-[0.04em] text-white transition-opacity duration-500`}
+        style={{
+          opacity: mobile ? MOBILE_OPACITY : typing ? TYPING_OPACITY : SETTLED_OPACITY,
+        }}
+        className={`${bebas.className} w-full max-w-[110rem] text-center uppercase leading-[0.9] tracking-[0.08em] text-white transition-opacity duration-500 ${
+          // Above the images there is only the band between the top bar and the
+          // photograph, so the phone size is capped to what that band can hold.
+          mobile
+            ? 'text-[clamp(1.75rem,9vw,3.5rem)]'
+            : 'text-[clamp(3rem,16.5vw,14.0625rem)]'
+        }`}
       >
         {captionTexts[activeIndex].slice(0, count) || ' '}
       </p>

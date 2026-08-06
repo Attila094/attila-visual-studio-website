@@ -9,7 +9,7 @@ import { selectedTile } from '@/lib/heroSequenceState';
 import { introAlreadyPlayed } from '@/lib/introPlayed';
 import { SequenceCaptions } from './SequenceCaptions';
 
-const bebas = Bebas_Neue({ subsets: ['latin'], weight: '400' });
+const bebas = Bebas_Neue({ subsets: ['latin', 'latin-ext'], weight: '400' });
 
 /* ================================================================
    Scroll-driven hero image sequence.
@@ -55,7 +55,7 @@ const RADIUS = 34;
 const PARKED_RADIUS = 8;
 const TILE_RADIUS = 16; // matches MainTiles' rounded-2xl
 /** Below this width the phone layout applies. Matches Tailwind's `sm`. */
-const MOBILE_MAX = 640;
+export const MOBILE_MAX = 640;
 /** On a phone the big image runs at twice the size the gutters would allow,
  *  and the corners come in to 40% of their radius — 34px of rounding reads as
  *  a squircle at that scale. The parked images keep their size and only lose
@@ -76,7 +76,7 @@ export const RUNWAY_VH = 3;
 const BALL_HANDOFF = 0.005;
 /** The caption's type-in, and the pause that has to contain it — the hold runs
  *  a beat longer so the finished line can be read before the page moves on. */
-export const TYPE_MS = 2000;
+export const TYPE_MS = 3000;
 const HOLD_MS = TYPE_MS + 200;
 /** Once landed, each image settles from 100% to 95% of its tile. */
 const FINAL_SCALE = 0.95;
@@ -210,6 +210,13 @@ export function HeroImageSequence() {
   const [captionIndex, setCaptionIndex] = useState(-1);
   const [captionFront, setCaptionFront] = useState(false);
   const captionFade = useMotionValue(0);
+  // The band the caption occupies on a phone: from the bottom of the top bar
+  // (menu pill, contact pill and the docked logo — whichever hangs lowest) down
+  // to the top edge of the big image. Published as motion values so the caption
+  // can be centred in it every frame, while the logo is still docking and the
+  // images are still moving.
+  const bandTop = useMotionValue(0);
+  const bandHeight = useMotionValue(0);
   // True the moment the fifth image reaches its tile — from here the five are
   // the tiles, and clickable.
   const [landed, setLanded] = useState(false);
@@ -248,6 +255,18 @@ export function HeroImageSequence() {
       // --- Geometry --------------------------------------------------------
       const logo = document.querySelector<HTMLElement>('[data-hero-logo]');
       const logoBottom = logo ? logo.getBoundingClientRect().bottom : vh * 0.58;
+
+      // Lowest edge of the top bar — the line the menu pill, the contact pill
+      // and the docked logo all share. Both navs are queried and the hidden one
+      // is skipped (it measures 0 high), so this is right at either breakpoint.
+      // The logo is deliberately NOT measured here: it docks to 70% of the pill
+      // height, so it can never reach past them, and its rect lags a frame
+      // behind the scroll transform that drives it.
+      let barBottom = 0;
+      document.querySelectorAll<HTMLElement>('nav[aria-label]').forEach((n) => {
+        const r = n.getBoundingClientRect();
+        if (r.height > 0) barBottom = Math.max(barBottom, r.bottom);
+      });
 
       const topMin = Math.max(16, logoBottom + LOGO_GAP);
       const band = Math.max(120, vh - BOTTOM_MARGIN - topMin);
@@ -295,6 +314,8 @@ export function HeroImageSequence() {
       // image hanging off the top of a tall band of dead space.
       const top = topMin + Math.max(0, (band - slotH) / 2);
       const slot: Rect = { top, left: (vw - slotW) / 2, w: slotW, h: slotH, r: radius };
+      bandTop.set(barBottom);
+      bandHeight.set(Math.max(0, top - barBottom));
 
       const tw = slotW * THUMB;
       const th = slotH * THUMB;
@@ -444,7 +465,7 @@ export function HeroImageSequence() {
       window.removeEventListener('wheel', blockDuringHold);
       window.removeEventListener('touchmove', blockDuringHold);
     };
-  }, [progress, geoTick, captionFade]);
+  }, [progress, geoTick, captionFade, bandTop, bandHeight]);
 
   return (
     <>
@@ -469,7 +490,13 @@ export function HeroImageSequence() {
         ))}
       </div>
 
-      <SequenceCaptions activeIndex={captionIndex} front={captionFront} fade={captionFade} />
+      <SequenceCaptions
+        activeIndex={captionIndex}
+        front={captionFront}
+        fade={captionFade}
+        bandTop={bandTop}
+        bandHeight={bandHeight}
+      />
     </>
   );
 }

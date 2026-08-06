@@ -6,11 +6,11 @@ import { Bebas_Neue } from 'next/font/google';
 import { animate, motion, useMotionValue, useReducedMotion, useScroll, useTransform } from 'framer-motion';
 import { LogoDraw } from './LogoDraw';
 
-const bebas = Bebas_Neue({ subsets: ['latin'], weight: '400' });
+const bebas = Bebas_Neue({ subsets: ['latin', 'latin-ext'], weight: '400' });
 
 // Past this scroll position the docked logo becomes an active Home link.
 const LINK_AT = 220;
-// The menu bar docks at top-5 (20px); the docked logo aligns to that band.
+// Fallback menu-bar centre, used only if the nav can't be measured.
 const NAV_TOP = 20;
 
 /* ================================================================
@@ -188,6 +188,10 @@ export function HeroExperience({ onRevealed }: { onRevealed?: () => void } = {})
   const [dims, setDims] = useState({ endScroll: 600, yDock: -320, dockScale: 0.2 });
 
   // Scroll-driven dock: shrink + lift the logo to the top; fade the text out.
+  // Phones behave exactly like wide screens — the logo draws at full size in the
+  // centre and then rides the scroll upward, arriving docked in the top bar (on
+  // the menu bar's line, centred between the pills) only as the scroll
+  // animation ends.
   const scale = useTransform(scrollY, [0, dims.endScroll], [1, dims.dockScale], { clamp: true });
   const y = useTransform(scrollY, [0, dims.endScroll], [0, dims.yDock], { clamp: true });
   const textFade = useTransform(scrollY, [0, 160], [1, 0], { clamp: true });
@@ -297,15 +301,21 @@ export function HeroExperience({ onRevealed }: { onRevealed?: () => void } = {})
       const maxScroll = Math.max(1, document.documentElement.scrollHeight - vh);
       const endScroll = Math.min(vh * 0.7, maxScroll);
       const el = logoRef.current;
-      if (el && window.scrollY < 5) {
-        const r = el.getBoundingClientRect();
+      if (el) {
+        // offsetHeight, not getBoundingClientRect: the rect already carries the
+        // dock transform, so measuring it would feed the scale back into itself.
+        // The logo is the only in-flow child of a centred fixed layer, so its
+        // untransformed centre is simply the middle of the viewport.
+        const logoH = el.offsetHeight || 1;
         const nav = document.querySelector('nav[aria-label]');
-        const pillH = nav ? nav.getBoundingClientRect().height : 34;
+        const navRect = nav?.getBoundingClientRect();
+        const pillH = navRect?.height || 34;
         // Docked height == 70% of the menu bar height (30% smaller than the pill).
-        const dockScale = Math.min(1, pillH / r.height) * 0.7;
-        const restCenterY = r.top + r.height / 2;
-        const targetCenterY = NAV_TOP + pillH / 2;
-        setDims({ endScroll, yDock: targetCenterY - restCenterY, dockScale });
+        const dockScale = Math.min(1, pillH / logoH) * 0.7;
+        // Align to the bar's live centre — the pills sit at top-3 on phones and
+        // top-5 from `sm` up, so this can't be a constant.
+        const targetCenterY = navRect ? navRect.top + pillH / 2 : NAV_TOP + pillH / 2;
+        setDims({ endScroll, yDock: targetCenterY - vh / 2, dockScale });
       } else {
         setDims((d) => ({ ...d, endScroll }));
       }

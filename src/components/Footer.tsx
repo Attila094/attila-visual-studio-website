@@ -5,9 +5,12 @@ const EMAIL = 'attilakovacs094@gmail.com';
 
 const socials = ['Youtube', 'Facebook', 'Instagram', 'Tiktok', 'LinkedIn'];
 
+// Same order as the top bar, plus Contact — which lives in its own corner pill
+// up there but belongs in the list down here.
 const menu = [
   { href: '/', label: 'Work' },
   { href: '/services', label: 'Services' },
+  { href: '/info', label: 'Info' },
   { href: '/about', label: 'About' },
   { href: '/contact', label: 'Contact' },
 ];

@@ -7,7 +7,7 @@ import { visualizationProjects } from '@/content/visualizationProjects';
 import { usePinnedScrollProgress, wrap } from './usePinnedScrollProgress';
 import { useHasHoverSupport } from '@/lib/useHasHoverSupport';
 
-const bebas = Bebas_Neue({ subsets: ['latin'], weight: '400' });
+const bebas = Bebas_Neue({ subsets: ['latin', 'latin-ext'], weight: '400' });
 
 /** Size of the incoming thumbnail, as a fraction of the full image stage. */
 const THUMB_SCALE = 0.17;

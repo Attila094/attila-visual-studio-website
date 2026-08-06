@@ -6,21 +6,17 @@ import { usePathname } from 'next/navigation';
 import { AnimatePresence, motion, useReducedMotion, type Easing } from 'framer-motion';
 import { useHeroReveal } from './home/HeroRevealContext';
 
-/** The bar on wide screens. CONTACT lives in its own corner button. */
+/** The bar on wide screens. CONTACT is not in here — it has its own corner
+ *  button on the left, so this slot carries INFO instead. */
 const LINKS = [
   { href: '/', label: 'Work' },
   { href: '/services', label: 'Services' },
+  { href: '/info', label: 'Info' },
   { href: '/about', label: 'About' },
-  { href: '/contact', label: 'Contact' },
 ];
 
-/** The roll-down list on phones. */
-const MOBILE_LINKS = [
-  { href: '/', label: 'Work' },
-  { href: '/services', label: 'Services' },
-  { href: '/about', label: 'Info' },
-  { href: '/about', label: 'About' },
-];
+/** The roll-down list on phones — same four, same order. */
+const MOBILE_LINKS = LINKS;
 
 /** Shared pill geometry, so the corner button matches the bar exactly — same
  *  height, same baseline. Sized at 80% of the original. */
@@ -31,6 +27,12 @@ const PILL_BG =
   'absolute inset-0 z-0 rounded-full bg-white shadow-[0_10px_30px_rgba(0,0,0,0.12)] ring-1 ring-black/5';
 const INACTIVE = 'text-[#6f6f6f] hover:text-ink';
 const ACTIVE = 'text-[#3a3a3a]';
+
+/** Phone menu pill corners. Closed it is a capsule — at the bar's 30px height
+ *  that is an effective 15px radius; opened, the corners come in to half that
+ *  so the rolled-down panel reads as a card rather than a stretched pill. */
+const PILL_R = 15;
+const PILL_R_OPEN = PILL_R / 2;
 
 const BALL = 16;
 const BALL_COLOR = '#ffffff';
@@ -175,9 +177,12 @@ export function BallMenu() {
         <div className="relative">
           <motion.div
             initial={false}
-            animate={{ opacity: asMenu ? 1 : 0 }}
-            transition={{ duration: 0.3, delay: barDelay }}
-            className={`${PILL_BG} rounded-[14px]`}
+            animate={{ opacity: asMenu ? 1 : 0, borderRadius: open ? PILL_R_OPEN : PILL_R }}
+            transition={{
+              opacity: { duration: 0.3, delay: barDelay },
+              borderRadius: { duration: 0.28, ease: [0.22, 1, 0.36, 1] },
+            }}
+            className={PILL_BG}
           />
           <motion.div
             style={{ pointerEvents: asMenu ? 'auto' : 'none' }}

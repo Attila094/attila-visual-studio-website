@@ -1,5 +1,8 @@
 import type { Metadata } from 'next';
-import { ContactForm } from '@/components/contact/ContactForm';
+import { ContactTiles } from '@/components/contact/ContactTiles';
+import { PAGE_TITLE_CLASS, PAGE_TITLE_STYLE, PAGE_TOP_PAD } from '@/components/pageTitle';
+
+const EMAIL = 'attilakovacs094@gmail.com';
 
 export const metadata: Metadata = {
   title: 'Kapcsolat',
@@ -10,43 +13,39 @@ export const metadata: Metadata = {
 const details = [
   { label: 'Helyszín', value: 'Budapest, Lajos utca 142', href: 'https://maps.google.com/?q=Budapest+Lajos+utca+142' },
   { label: 'Telefon', value: '+36 20 547 7356', href: 'tel:+36205477356' },
-  { label: 'Email', value: 'attilakovacs094@gmail.com', href: 'mailto:attilakovacs094@gmail.com' },
+  { label: 'Email', value: EMAIL, href: `mailto:${EMAIL}` },
 ];
 
 export default function ContactPage() {
   return (
-    <section className="mx-auto max-w-shell px-5 pb-24 pt-28 sm:px-8 sm:pt-32">
-      <div className="grid grid-cols-1 gap-12 lg:grid-cols-12 lg:gap-16">
-        {/* Left — heading + info */}
-        <div className="lg:col-span-5">
-          <p className="mb-5 text-xs font-medium uppercase tracking-[0.2em] text-muted">
-            Kapcsolat
-          </p>
-          <h1 className="text-4xl font-semibold leading-[1.02] tracking-tight sm:text-5xl">
-            Beszéljünk a
-            <br />
-            <span className="text-muted">projektedről.</span>
-          </h1>
+    // A column the height of the viewport: title at the top, address row at the
+    // bottom, and the tiles taking the space between — which centres them on
+    // the page at any height.
+    <section
+      className={`mx-auto flex min-h-dvh max-w-shell flex-col px-5 pb-24 sm:px-8 ${PAGE_TOP_PAD}`}
+    >
+      <h1 style={PAGE_TITLE_STYLE} className={PAGE_TITLE_CLASS}>
+        Contact
+      </h1>
 
-          <dl className="mt-12 space-y-6">
-            {details.map((d) => (
-              <div key={d.label} className="border-t border-line pt-4">
-                <dt className="text-xs uppercase tracking-[0.15em] text-muted">{d.label}</dt>
-                <dd className="mt-1 text-lg">
-                  <a href={d.href} className="transition-colors hover:text-muted">
-                    {d.value}
-                  </a>
-                </dd>
-              </div>
-            ))}
-          </dl>
-        </div>
-
-        {/* Right — main contact form */}
-        <div className="lg:col-span-7 lg:pl-8">
-          <ContactForm />
-        </div>
+      <div className="flex flex-1 items-center py-10 sm:py-14">
+        <ContactTiles email={EMAIL} />
       </div>
+
+      {/* Address / phone / email — one horizontal row, sitting just above the
+          footer at the end of the page. */}
+      <dl className="grid grid-cols-1 gap-8 sm:grid-cols-3">
+        {details.map((d) => (
+          <div key={d.label}>
+            <dt className="text-xs uppercase tracking-[0.15em] text-white/45">{d.label}</dt>
+            <dd className="mt-1 text-lg text-white">
+              <a href={d.href} className="transition-colors hover:text-white/60">
+                {d.value}
+              </a>
+            </dd>
+          </div>
+        ))}
+      </dl>
     </section>
   );
 }

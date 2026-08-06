@@ -5,7 +5,7 @@ import { Bebas_Neue } from 'next/font/google';
 import { motion, useReducedMotion, useScroll, useTransform } from 'framer-motion';
 import { useHeroReveal } from './HeroRevealContext';
 
-const bebas = Bebas_Neue({ subsets: ['latin'], weight: '400' });
+const bebas = Bebas_Neue({ subsets: ['latin', 'latin-ext'], weight: '400' });
 
 // Web-encoded alpha video (VP9 + alpha) transcoded from
 // `hero page animation_white.mov`, with a transparent last-frame PNG poster as

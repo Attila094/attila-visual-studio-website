@@ -1,33 +1,24 @@
 import type { Metadata } from 'next';
-import { Bebas_Neue } from 'next/font/google';
 import { ServicesInteractive } from '@/components/services/ServicesInteractive';
-
-const bebas = Bebas_Neue({ subsets: ['latin'], weight: '400' });
+import { PAGE_TITLE_CLASS, PAGE_TITLE_STYLE, PAGE_TOP_PAD } from '@/components/pageTitle';
 
 export const metadata: Metadata = {
   title: 'Szolgáltatások',
   description:
-    'Építészet és belsőépítészet, fotorealisztikus vizualizáció, grafikai tervezés, valamint fotózás és videózás — négy szolgáltatás egy stúdióból.',
+    'Látványtervezés, építészeti tervezés, belsőépítészet, valamint fotó- és videográfia — négy szolgáltatáscsoport egy stúdióból.',
 };
 
 export default function ServicesPage() {
   return (
-    // White page — overrides the site-wide black body background.
-    <section className="min-h-dvh bg-white px-5 pb-24 pt-28 sm:px-8 sm:pt-32">
+    // Black page with the SERVICES title over four card rows, per the
+    // `servicepage.jpg` reference.
+    <section className={`min-h-dvh px-5 pb-24 text-white sm:px-8 ${PAGE_TOP_PAD}`}>
       <div className="mx-auto max-w-shell">
-        {/* Header block — heading + intro */}
-        <div className="mb-12 grid grid-cols-1 gap-8 lg:grid-cols-12 lg:items-end">
-          <div className="lg:col-span-7">
-            <h1 className={`${bebas.className} text-7xl leading-[1.02] tracking-tight sm:text-8xl`}>
-              SERVICES
-            </h1>
-          </div>
-        </div>
+        <h1 style={PAGE_TITLE_STYLE} className={`${PAGE_TITLE_CLASS} mb-10 sm:mb-14`}>
+          Services
+        </h1>
 
-        {/* Centered interactive tiles */}
-        <div className="mx-auto max-w-6xl">
-          <ServicesInteractive />
-        </div>
+        <ServicesInteractive />
       </div>
     </section>
   );

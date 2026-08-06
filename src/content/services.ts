@@ -1,49 +1,96 @@
-export interface Service {
-  id: string;
-  index: string;
-  title: string;
-  /** Placeholder detail copy revealed on hover / expansion. */
-  blurb: string;
-  bullets: string[];
-  /** The four tile-like options shown at the bottom of the enlarged tile. */
-  subOptions: string[];
+export interface ServiceItem {
+  /** Caption under the card. */
+  label: string;
+  /** Heading inside the opened panel. Falls back to the label. */
+  title?: string;
+  /** Card artwork. Also the poster frame when `video` is set; without either
+   *  the card falls back to a plain plate. */
+  image?: string;
+  /** Silent clip that plays on hover in place of the still. */
+  video?: string;
 }
 
+/** Everything under `Thumbnails - services`, re-encoded for the web. */
+const MEDIA = '/media/services';
+
+export interface Service {
+  id: string;
+  /** Category heading above the card row. */
+  title: string;
+  /** Detail copy shown in the panel once a card is chosen. */
+  blurb: string;
+  bullets: string[];
+  /** The cards in this category — each one opens the detail panel. */
+  items: ServiceItem[];
+}
+
+/** The four categories of the `servicepage.jpg` layout, in reference order. */
 export const services: Service[] = [
   {
-    id: 'epiteszet',
-    index: '01',
-    title: 'építészet & belsőépítészet',
-    blurb:
-      'Koncepciótól a kiviteli tervig: terek, amelyek egyszerre funkcionálisak és karakteresek. Lakóterek, irodák és vendéglátás áttervezése és tervezése.',
-    bullets: ['Koncepcióterv', 'Belsőépítészeti tervezés', 'Anyag- és színkoncepció'],
-    subOptions: ['Lakótér', 'Iroda', 'Vendéglátás', 'Köztér'],
-  },
-  {
-    id: 'vizualizacio',
-    index: '02',
-    title: 'vizualizáció',
+    id: 'latvanytervezes',
+    title: 'Látványtervezés',
     blurb:
       'Fotorealisztikus 3D látványtervek 3ds Max, V-Ray és Twinmotion segítségével — még az első kapavágás előtt bemutatjuk a kész teret.',
     bullets: ['Külső és belső render', 'Animáció és bejárás', '360°-os panoráma'],
-    subOptions: ['Still', 'Motion Still', 'Panoramic', 'Animated'],
+    items: [
+      { label: 'Kültéri', title: 'Kültéri látványterv', image: `${MEDIA}/kulteri.webp` },
+      { label: 'Drónfotó', title: 'Drónfotó látványterv', image: `${MEDIA}/dronfoto.webp` },
+      { label: 'Beltéri', title: 'Beltéri látványterv', image: `${MEDIA}/belteri.webp` },
+      { label: 'Panoráma', title: 'Panoráma látványterv', image: `${MEDIA}/panorama.webp` },
+      {
+        label: 'Animáció',
+        title: 'Animált látványterv',
+        image: `${MEDIA}/animacio.webp`,
+        video: `${MEDIA}/animacio.mp4`,
+      },
+    ],
   },
   {
-    id: 'grafika',
-    index: '03',
-    title: 'grafikai tervezés',
+    id: 'epiteszeti-tervezes',
+    title: 'Építészeti tervezés',
     blurb:
-      'Arculat, nyomdai és digitális anyagok, amelyek egységes vizuális nyelvet adnak a projektnek és a márkának.',
-    bullets: ['Arculattervezés', 'Nyomdai előkészítés', 'Prezentációs anyagok'],
-    subOptions: ['Arculat', 'Nyomdai', 'Digitális', 'Prezentáció'],
+      'Koncepciótól a kiviteli tervig: lakó- és középületek, valamint köztéri terek tervezése, bővítése és felújítása.',
+    bullets: ['Koncepcióterv', 'Engedélyezési és kiviteli terv', 'Tervezői művezetés'],
+    items: [
+      { label: 'Lakóépület tervezés', image: `${MEDIA}/lakoepulet-tervezes.webp` },
+      { label: 'Lakóépület bővítés', image: `${MEDIA}/lakoepulet-bovites.webp` },
+      // No thumbnail supplied for this one yet — the card stays a plain plate.
+      { label: 'Lakóépület felújítás' },
+      { label: 'Középület tervezés', image: `${MEDIA}/kozepulet-tervezes.webp` },
+      { label: 'Köztér tervezés', image: `${MEDIA}/kozter-tervezes.webp` },
+    ],
+  },
+  {
+    id: 'belsoepiteszet',
+    title: 'Belsőépítészet',
+    blurb:
+      'Terek, amelyek egyszerre funkcionálisak és karakteresek — lakóterek, irodák és vendéglátóhelyek belsőépítészeti tervezése.',
+    bullets: ['Belsőépítészeti tervezés', 'Anyag- és színkoncepció', 'Egyedi bútorterv'],
+    items: [
+      { label: 'Belsőépítészeti tervezés' },
+      { label: 'Belsőépítészeti átalakítás', image: `${MEDIA}/belsoepiteszeti-atalakitas.webp` },
+      { label: 'Bútortervezés' },
+    ],
   },
   {
     id: 'foto-video',
-    index: '04',
-    title: 'fotózás & videózás',
+    title: 'Fotó- és videográfia',
     blurb:
       'Építészeti és belsőépítészeti fotó- és videódokumentáció, amely hűen és igényesen mutatja be az elkészült teret.',
     bullets: ['Építészeti fotó', 'Rövid videó / reels', 'Drónfelvétel'],
-    subOptions: ['Fotó', 'Videó', 'Reels', 'Drón'],
+    items: [
+      { label: 'Építészeti fotózás', image: `${MEDIA}/epiteszeti-fotozas.webp` },
+      {
+        label: 'Építészeti videózás',
+        image: `${MEDIA}/epiteszeti-videozas.webp`,
+        video: `${MEDIA}/epiteszeti-videozas.mp4`,
+      },
+      { label: 'Drón fotózás', image: `${MEDIA}/dron-fotozas.webp` },
+      {
+        label: 'Drón videózás',
+        image: `${MEDIA}/dron-videozas.webp`,
+        video: `${MEDIA}/dron-videozas.mp4`,
+      },
+    ],
   },
 ];

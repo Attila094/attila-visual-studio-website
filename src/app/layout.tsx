@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import './globals.css';
 import { BallMenu } from '@/components/BallMenu';
+import { DockedLogo } from '@/components/DockedLogo';
 import { Footer } from '@/components/Footer';
 import { HeroRevealProvider } from '@/components/home/HeroRevealContext';
 
@@ -41,6 +42,7 @@ export default function RootLayout({
       <body className="min-h-dvh bg-black font-sans text-ink">
         <HeroRevealProvider>
           <BallMenu />
+          <DockedLogo />
           <main>{children}</main>
           <Footer />
         </HeroRevealProvider>
