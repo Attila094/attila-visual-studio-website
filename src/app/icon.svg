@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!-- Browser-tab icon. The site had none, so every page requested /favicon.ico
+       and got a 404 with a blank tab icon.
+
+       The full wordmark is 2036x711 — a sliver in a square, illegible at 16px —
+       so this is its leading A: the diagonal and the first upright, taken
+       verbatim from the same coordinates as `logoLines.ts` (source box
+       x 17.5-423.5, y 17.5-693.5) and mapped into a padded square. The stroke
+       is heavier than the site's 35 for the same reason: at 16px the original
+       weight disappears. -->
+  <rect width="512" height="512" rx="96" fill="#000000" />
+  <g
+    transform="translate(150.3 80) scale(0.5207) translate(-17.5 -17.5)"
+    stroke="#ffffff"
+    stroke-width="90"
+    stroke-linecap="round"
+    fill="none"
+  >
+    <line x1="17.5029" y1="692.625" x2="348.743" y2="118.9" stroke-opacity="0.6" />
+    <line x1="423.503" y1="693.5" x2="423.503" y2="17.5" />
+  </g>
+</svg>

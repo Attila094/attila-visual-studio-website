@@ -55,11 +55,7 @@ export const services: Service[] = [
         label: 'Beltéri',
         title: 'Beltéri látványterv',
         image: `${MEDIA}/belteri.webp`,
-        panelImages: [
-          `${MEDIA}/belteri-01.webp`,
-          `${MEDIA}/belteri-02.webp`,
-          `${MEDIA}/belteri-03.webp`,
-        ],
+        panelImages: [`${MEDIA}/belteri-01.webp`, `${MEDIA}/belteri-02.webp`],
       },
       {
         label: 'Panoráma',
@@ -79,11 +75,7 @@ export const services: Service[] = [
         label: 'Termék',
         title: 'Termék látványterv',
         image: `${MEDIA}/termek.webp`,
-        panelImages: [
-          `${MEDIA}/termek-01.webp`,
-          `${MEDIA}/termek-02.webp`,
-          `${MEDIA}/termek-03.webp`,
-        ],
+        panelImages: [`${MEDIA}/termek-01.webp`, `${MEDIA}/termek-02.webp`],
       },
     ],
   },
@@ -108,8 +100,7 @@ export const services: Service[] = [
       'Terek, amelyek egyszerre funkcionálisak és karakteresek — lakóterek, irodák és vendéglátóhelyek belsőépítészeti tervezése.',
     bullets: ['Belsőépítészeti tervezés', 'Anyag- és színkoncepció', 'Egyedi bútorterv'],
     items: [
-      // No thumbnail supplied for this one yet — the card stays a plain plate.
-      { label: 'Belsőépítészeti tervezés' },
+      { label: 'Belsőépítészeti tervezés', image: `${MEDIA}/belsoepiteszeti-tervezes.webp` },
       { label: 'Belsőépítészeti átalakítás', image: `${MEDIA}/belsoepiteszeti-atalakitas.webp` },
       { label: 'Bútortervezés', image: `${MEDIA}/butortervezes.webp` },
     ],

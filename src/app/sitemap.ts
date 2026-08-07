@@ -13,6 +13,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
     { path: '', priority: 1 },
     { path: '/services', priority: 0.8 },
     { path: '/about', priority: 0.6 },
+    { path: '/info', priority: 0.6 },
     { path: '/contact', priority: 0.6 },
   ].map(({ path, priority }) => ({
     url: `${SITE_URL}${path}`,
