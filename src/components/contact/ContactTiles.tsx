@@ -5,6 +5,7 @@ import { Bebas_Neue, Montserrat } from 'next/font/google';
 import { AnimatePresence, motion } from 'framer-motion';
 import { contactCategories, type ContactCategory } from '@/content/contactServices';
 import { services, type ServiceItem } from '@/content/services';
+import { PanTrack } from '@/components/PanTrack';
 import { morphSpring } from '@/lib/motion';
 
 const bebas = Bebas_Neue({ subsets: ['latin', 'latin-ext'], weight: '400' });
@@ -27,7 +28,7 @@ function mailto(email: string, label: string) {
 
 /**
  * One service inside an opened tile. Same behaviour as the services-page
- * cards: a still lifts on hover, a clip plays instead.
+ * cards: a still lifts on hover, a clip plays instead, a panorama orbits.
  */
 function ServiceTile({ item, email }: { item: ServiceItem; email: string }) {
   const video = useRef<HTMLVideoElement>(null);
@@ -54,19 +55,24 @@ function ServiceTile({ item, email }: { item: ServiceItem; email: string }) {
       <span
         style={{ backgroundColor: PLATE }}
         className={`relative block aspect-[3/4] overflow-hidden rounded-xl transition duration-300 group-hover:brightness-110 ${
-          // A clip answers the hover by playing, so it doesn't also zoom.
-          item.video ? '' : 'group-hover:scale-[1.03]'
+          // A clip or a panorama answers the hover with its own motion, so the
+          // tile doesn't also zoom.
+          item.video || item.pan ? '' : 'group-hover:scale-[1.03]'
         }`}
       >
-        {item.image && (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={item.image}
-            alt=""
-            loading="lazy"
-            decoding="async"
-            className="absolute inset-0 h-full w-full object-cover"
-          />
+        {item.pan ? (
+          <PanTrack src={item.pan} />
+        ) : (
+          item.image && (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={item.image}
+              alt=""
+              loading="lazy"
+              decoding="async"
+              className="absolute inset-0 h-full w-full object-cover"
+            />
+          )
         )}
         {item.video && (
           <video

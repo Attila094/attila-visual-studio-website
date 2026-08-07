@@ -1,20 +1,71 @@
 import type { Metadata } from 'next';
 import Image from 'next/image';
+import Link from 'next/link';
 import { Anton, Caveat, Poppins } from 'next/font/google';
 import { PAGE_TITLE_CLASS, PAGE_TITLE_STYLE, PAGE_TOP_PAD } from '@/components/pageTitle';
+import { WORK_HREF } from '@/lib/anchors';
 
-/** Heavy condensed display for the ghosted name and the section heading, a
- *  handwritten quote, and a light geometric sans. ABOUT itself comes from the
- *  shared page-title style. */
+/** Heavy condensed display for the ghosted name, the role line, the essay's
+ *  heading and the buttons; a handwritten quote; and a geometric sans that
+ *  carries both the card headings (bold, tracked out) and all body copy. ABOUT
+ *  itself comes from the shared page-title style. */
 const anton = Anton({ subsets: ['latin', 'latin-ext'], weight: '400' });
 const script = Caveat({ subsets: ['latin', 'latin-ext'], weight: '400' });
-const geo = Poppins({ subsets: ['latin', 'latin-ext'], weight: '300' });
+const geo = Poppins({ subsets: ['latin', 'latin-ext'], weight: ['300', '700'] });
 
 /** The oversized name behind the portrait — near-black, sampled from the mock. */
 const GHOST = '#1e1e1e';
 /** Its type size. Shared, because the gap under ABOUT and the quote's position
  *  are both expressed in ems of it. */
 const GHOST_SIZE = 'clamp(4rem, 25.5vw, 22rem)';
+
+/** Sampled straight out of `aboutpage.jpg`: the fact cards' plate, and the two
+ *  button greys — the quiet pair against CONTACT's lighter one. */
+const CARD = '#1a1a1a';
+const BUTTON = '#333333';
+const BUTTON_ACCENT = '#666666';
+
+/**
+ * A line in a fact card. A pair sets its second half on its own line, hung
+ * under the first — the mock indents a competition's building that way rather
+ * than letting it wrap.
+ */
+type CardLine = string | readonly [string, string];
+
+const CARDS: { title: string; lines: readonly CardLine[] }[] = [
+  {
+    title: 'Végzettség',
+    lines: ['PTE Mérnöki és Informatikai Kar /Bsc/', 'PTE Mérnöki és Informatikai Kar /Msc/'],
+  },
+  {
+    title: 'Tapasztalat',
+    lines: [
+      'Archicad',
+      '3ds max / V-ray / Corona',
+      'Unreal Engine / Twinmotion',
+      'Photoshop / Lightroom',
+      'After Effects / Premier Pro',
+    ],
+  },
+  {
+    title: 'Pályázatok',
+    lines: [
+      ['2018 - Szombathely -', 'Lovas Sport- és Rendezvényközpont'],
+      '2022 - Pécs Tüskésrét Fejlesztése',
+      '2022 - Budapest - Ecseri úti metrómegálló',
+      ['2023 - Budapest -', 'Magyar Építészeti Központ és Múzeum'],
+      ['2024 - Kiskőrös -', 'Petőfi Sándor Kultúrális Központ'],
+    ],
+  },
+];
+
+/** The three closers. CONTACT is the light one, as in the mock; WORKS opens the
+ *  home page at the tile row rather than at the hero. */
+const BUTTONS = [
+  { href: WORK_HREF, label: 'Works' },
+  { href: '/services', label: 'Services' },
+  { href: '/contact', label: 'Contact', accent: true },
+];
 
 export const metadata: Metadata = {
   title: 'About',
@@ -71,7 +122,8 @@ export default function AboutPage() {
               }}
               className={`${script.className} absolute left-[9%] z-20 max-w-[52%] text-[clamp(0.9rem,1.95vw,1.6rem)] leading-none text-white`}
             >
-              &ldquo;Egy igazán fasza idézet, valami bölcsességről…&rdquo;
+              &ldquo;Alkotás és értékteremtés, építészet és vizualizáció
+              segítségével…&rdquo;
             </p>
           </div>
 
@@ -89,26 +141,93 @@ export default function AboutPage() {
           </div>
         </div>
 
-        {/* Végzettség */}
-        <div className="mt-20 grid grid-cols-1 gap-6 md:grid-cols-2">
-          <h2
-            className={`${anton.className} text-[clamp(1.5rem,4.7vw,3.75rem)] uppercase leading-none tracking-[0.01em]`}
-          >
-            Végzettség
-          </h2>
-          <div className={`${geo.className} text-lg leading-snug text-white/75 sm:text-xl`}>
-            <p>tervező építész</p>
-            <p>PTE Mérnöki és Informatikai Kar</p>
-          </div>
+        {/* The role, centred under the portrait — it shares the photo's column,
+            so it stays on his midline at any width. A phone's 37.5% column is
+            too narrow for it, so there it runs the full width instead. */}
+        <p
+          className={`${anton.className} mt-5 text-center text-[clamp(0.95rem,1.95vw,1.9rem)] leading-none text-white sm:ml-auto sm:w-[37.5%]`}
+        >
+          építész &amp; látványtervező
+        </p>
+
+        {/* Three fact cards — equal plates, side by side on a desktop and
+            stacked on a phone. The minimum height is the mock's: the cards hold
+            their shape whether they carry two lines or eight. */}
+        <div className="mt-14 grid gap-3 md:grid-cols-3">
+          {CARDS.map((card) => (
+            <section
+              key={card.title}
+              style={{ backgroundColor: CARD }}
+              className="rounded-2xl p-6 md:min-h-[18.5rem]"
+            >
+              <h2
+                className={`${geo.className} text-[clamp(1.05rem,2.15vw,1.95rem)] font-bold uppercase leading-none tracking-[0.24em] text-white/65`}
+              >
+                {card.title}
+              </h2>
+
+              <div
+                className={`${geo.className} mt-6 text-[clamp(0.85rem,1.2vw,1.1rem)] font-light leading-[1.3] text-white/55`}
+              >
+                {card.lines.map((line) => {
+                  const [head, hung] = typeof line === 'string' ? [line, null] : line;
+                  return (
+                    <p key={head}>
+                      {head}
+                      {/* Hung under the year, roughly where the entry's own
+                          text starts, as the mock sets it. */}
+                      {hung && <span className="block pl-[3.6em]">{hung}</span>}
+                    </p>
+                  );
+                })}
+              </div>
+            </section>
+          ))}
         </div>
 
-        <p
-          className={`${geo.className} mt-8 text-justify text-base leading-relaxed text-white/75 sm:text-lg`}
+        {/* The essay. Justified and full width, under a condensed heading. */}
+        <h2
+          className={`${anton.className} mt-8 text-[clamp(1.15rem,1.75vw,1.6rem)] leading-tight text-white`}
         >
-          Lorem Ipsum is simply dummy text of the printing and typesetting industry. Lorem Ipsum
-          has been the industry&apos;s standard dummy text ever since 1966, when designers at
-          Letraset and James Mosley, the librarian at St Bride Printing Library in London, took a
-        </p>
+          Mérnöki és művészi látásmód együttesen
+        </h2>
+        <div
+          // Justified from `sm` up only: at a phone's measure the same setting
+          // opens rivers of white space between the words.
+          className={`${geo.className} mt-5 text-[clamp(0.85rem,1.2vw,1.1rem)] font-light leading-[1.3] text-white/75 sm:text-justify`}
+        >
+          <p>
+            Építészmérnöki diplomámat a Pécsi Tudományegyetem Műszaki és Informatikai Karán
+            szereztem. Tanulmányaimmal párhuzamosan, autodidakta módon sajátítottam el a
+            professzionális látványtervezést, amely mára a munkám egyik alappillérévé vált.
+          </p>
+          <p>
+            Szabadúszóként az elmúlt 10 évben széleskörű tapasztalatot szereztem az építészet, a
+            belsőépítészet és a digitális vizualizáció területén. Ez a multidiszciplináris
+            tapasztalati háttér biztosítja számomra azt a komplex szemléletmódot, amellyel minőségi
+            műszaki tartalom mellett magasszínvonlanú esztétikai megjelenéssel társítva végzem
+            tervezési folyamatokat a kezdeti koncepciótól fotorealisztikus prezentációig, teljes körű
+            szolgáltatást tudok nyújtani az ügyefeleim részére.
+          </p>
+        </div>
+
+        {/* Three ways on. One cell each, so the pills sit on the mock's rhythm
+            however wide their labels are. */}
+        <nav aria-label="Tovább" className="mt-28 grid grid-cols-3 justify-items-center gap-3">
+          {BUTTONS.map((button) => (
+            <Link
+              key={button.href}
+              href={button.href}
+              style={{
+                backgroundColor: button.accent ? BUTTON_ACCENT : BUTTON,
+                color: button.accent ? '#ffffff' : '#0a0a0a',
+              }}
+              className={`${anton.className} rounded-full px-4 py-3 text-center text-[clamp(0.85rem,1.9vw,1.7rem)] uppercase leading-none tracking-[0.01em] transition-opacity hover:opacity-80 sm:px-8 lg:px-12`}
+            >
+              {button.label}
+            </Link>
+          ))}
+        </nav>
       </div>
     </section>
   );

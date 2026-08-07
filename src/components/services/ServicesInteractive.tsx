@@ -1,11 +1,20 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { Anton, Montserrat, Poppins } from 'next/font/google';
 import { AnimatePresence, motion } from 'framer-motion';
 import { services, type Service, type ServiceItem } from '@/content/services';
+import { PanTrack } from '@/components/PanTrack';
 import { morphSpring } from '@/lib/motion';
+
+/** WebGL: it can't render on the server, and its three.js payload has no
+ *  business in the page bundle when only one card in seventeen opens it. */
+const PanoramaSphere = dynamic(
+  () => import('@/components/PanoramaSphere').then((m) => m.PanoramaSphere),
+  { ssr: false },
+);
 
 /** The heavy condensed grotesque of the `servicepage.jpg` reference. */
 const anton = Anton({ subsets: ['latin', 'latin-ext'], weight: '400' });
@@ -22,13 +31,23 @@ const PANEL = 'rgba(35,35,35,0.35)';
 const PANEL_IMG = '#4f4f4f';
 const PANEL_BLUR = 15;
 
+/** Columns for the panel's image band, by how many images the service has.
+ *  Spelled out rather than built from a template so Tailwind's scanner sees
+ *  every class it has to generate. */
+const PANEL_IMG_COLS: Record<number, string> = {
+  1: 'md:grid-cols-1',
+  2: 'md:grid-cols-2',
+  3: 'md:grid-cols-3',
+};
+
 function cardLayoutId(serviceId: string, label: string) {
   return `service-card-${serviceId}-${label}`;
 }
 
 /**
  * One catalogue card. Stills lift and brighten on hover; a card backed by a
- * clip plays it instead, so the motion in the tile *is* the hover response.
+ * clip plays it instead, and a panorama orbits — in each of those the motion in
+ * the tile *is* the hover response, so it doesn't also zoom.
  */
 function ServiceCard({
   service,
@@ -65,8 +84,7 @@ function ServiceCard({
       onHoverEnd={item.video ? stop : undefined}
       onFocus={item.video ? play : undefined}
       onBlur={item.video ? stop : undefined}
-      // A clip answers the hover by playing, so it doesn't also zoom.
-      whileHover={item.video ? undefined : { scale: 1.03 }}
+      whileHover={item.video || item.pan ? undefined : { scale: 1.03 }}
       whileTap={{ scale: 0.98 }}
       transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
       style={{ willChange: 'transform' }}
@@ -76,15 +94,19 @@ function ServiceCard({
         style={{ backgroundColor: CARD }}
         className="relative block aspect-[1/1.43] overflow-hidden rounded-xl transition-[filter] duration-300 group-hover:brightness-110"
       >
-        {item.image && (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={item.image}
-            alt=""
-            loading="lazy"
-            decoding="async"
-            className="absolute inset-0 h-full w-full object-cover"
-          />
+        {item.pan ? (
+          <PanTrack src={item.pan} />
+        ) : (
+          item.image && (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={item.image}
+              alt=""
+              loading="lazy"
+              decoding="async"
+              className="absolute inset-0 h-full w-full object-cover"
+            />
+          )
         )}
         {item.video && (
           <video
@@ -117,6 +139,10 @@ export function ServicesInteractive() {
   const [open, setOpen] = useState<{ serviceId: string; label: string } | null>(null);
   const service = services.find((s) => s.id === open?.serviceId) ?? null;
   const item = service?.items.find((i) => i.label === open?.label) ?? null;
+  // A service with no artwork yet falls back to the reference's two plates.
+  const panelSlots: (string | null)[] = item?.panelImages?.length
+    ? [...item.panelImages]
+    : [null, null];
 
   // A click anywhere outside the panel closes it. Clicking another card fires
   // this first and its own onClick second, so the panel simply switches.
@@ -180,9 +206,15 @@ export function ServicesInteractive() {
                 WebkitBackdropFilter: `blur(${PANEL_BLUR}px)`,
                 willChange: 'transform',
               }}
-              className="pointer-events-auto w-full max-w-[1150px] rounded-3xl p-5 sm:p-7"
+              // Capped at the viewport: on a phone the image band stacks, and
+              // three slots are taller than the screen.
+              className="pointer-events-auto max-h-full w-full max-w-[1150px] overflow-y-auto rounded-3xl p-5 sm:p-7"
             >
-              <div className="grid gap-4 md:grid-cols-[1fr_1.9fr_1.9fr]">
+              {/* Copy on the left, the artwork on the right. The image band is
+                  always the same width — 3.8fr against the text's 1fr, which is
+                  what the reference's two 1.9fr slots came to — so a service
+                  with one image or three still lines up with the rest. */}
+              <div className="grid gap-4 md:grid-cols-[1fr_3.8fr]">
                 <div>
                   <h3
                     className={`${anton.className} text-xl uppercase leading-none tracking-[0.01em] text-white sm:text-2xl`}
@@ -194,18 +226,36 @@ export function ServicesInteractive() {
                   </p>
                 </div>
 
-                {/* Two image slots, waiting on artwork — grey placeholders, as
-                    in the reference. */}
-                <span
-                  aria-hidden
-                  style={{ backgroundColor: PANEL_IMG }}
-                  className="block aspect-[14/11] rounded-xl"
-                />
-                <span
-                  aria-hidden
-                  style={{ backgroundColor: PANEL_IMG }}
-                  className="block aspect-[14/11] rounded-xl"
-                />
+                {item.panorama ? (
+                  // A 360 render takes the whole band as one 2:1 viewer — you
+                  // drag it to look around the room. It mounts with the panel
+                  // and unmounts with it, so the WebGL context is short-lived.
+                  <PanoramaSphere src={item.panorama} poster={item.panoramaPoster} />
+                ) : (
+                  <div className={`grid gap-4 ${PANEL_IMG_COLS[panelSlots.length]}`}>
+                    {panelSlots.map((src, i) => (
+                      <span
+                        key={src ?? i}
+                        aria-hidden={!src}
+                        // Without artwork the slot keeps the grey plate of the
+                        // reference.
+                        style={src ? undefined : { backgroundColor: PANEL_IMG }}
+                        className="relative block aspect-[14/11] overflow-hidden rounded-xl"
+                      >
+                        {src && (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={src}
+                            alt=""
+                            loading="lazy"
+                            decoding="async"
+                            className="absolute inset-0 h-full w-full object-cover"
+                          />
+                        )}
+                      </span>
+                    ))}
+                  </div>
+                )}
               </div>
 
               <div className="mt-4 flex justify-end">

@@ -5,6 +5,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { MainTiles } from './MainTiles';
 import { ProjectsGallery } from './ProjectsGallery';
 import { selectedTile } from '@/lib/heroSequenceState';
+import { WORK_ANCHOR } from '@/lib/anchors';
 
 /** Room left above the gallery when it is scrolled into view — enough to clear
  *  the fixed nav pills and the docked logo, which would otherwise sit on top of
@@ -58,7 +59,8 @@ export function MainLayout() {
 
   return (
     <section
-      id="munkak"
+      // Where every WORK link lands.
+      id={WORK_ANCHOR}
       // No z-index here on purpose: a positioned element with one creates a
       // stacking context that would trap this section relative to the fixed
       // sequence stage (z-30), which is what paints the tiles.

@@ -7,6 +7,7 @@ import { heroSequenceImages } from '@/content/heroSequence';
 import { mainTiles } from '@/content/mainTiles';
 import { selectedTile } from '@/lib/heroSequenceState';
 import { introAlreadyPlayed } from '@/lib/introPlayed';
+import { WORK_HASH } from '@/lib/anchors';
 import { SequenceCaptions } from './SequenceCaptions';
 
 const bebas = Bebas_Neue({ subsets: ['latin', 'latin-ext'], weight: '400' });
@@ -361,6 +362,17 @@ export function HeroImageSequence() {
 
       const s = run.current;
       const now = performance.now();
+
+      // A WORK link lands on the tile row, which is past the end of the
+      // sequence. The pauses exist to pace a scroll *through* it, and there was
+      // none — left armed they would fire all five at once and pin the page at
+      // the landing for as long as a caption takes to type. Read from the URL
+      // rather than a `hashchange` listener: a same-page hash link is a
+      // `pushState`, which does not fire that event.
+      if (s.nextHold < HOLD_POINTS.length && window.location.hash === WORK_HASH) {
+        s.nextHold = HOLD_POINTS.length;
+        s.holdUntil = 0;
+      }
 
       if (now < s.holdUntil) {
         // Held: the PAGE is pinned too, not just the sequence. Letting the page

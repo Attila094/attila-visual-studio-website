@@ -11,7 +11,7 @@ export const metadata: Metadata = {
 };
 
 const details = [
-  { label: 'Helyszín', value: 'Budapest, Lajos utca 142', href: 'https://maps.google.com/?q=Budapest+Lajos+utca+142' },
+  { label: 'Helyszín', value: 'Budapest', href: 'https://maps.google.com/?q=Budapest+Lajos+utca+142' },
   { label: 'Telefon', value: '+36 20 547 7356', href: 'tel:+36205477356' },
   { label: 'Email', value: EMAIL, href: `mailto:${EMAIL}` },
 ];

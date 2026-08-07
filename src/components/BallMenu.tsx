@@ -5,11 +5,13 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { AnimatePresence, motion, useReducedMotion, type Easing } from 'framer-motion';
 import { useHeroReveal } from './home/HeroRevealContext';
+import { WORK_HREF } from '@/lib/anchors';
 
 /** The bar on wide screens. CONTACT is not in here — it has its own corner
- *  button on the left, so this slot carries INFO instead. */
+ *  button on the left, so this slot carries INFO instead. WORK opens the home
+ *  page at the tile row; the docked logo is what opens it at the hero. */
 const LINKS = [
-  { href: '/', label: 'Work' },
+  { href: WORK_HREF, label: 'Work' },
   { href: '/services', label: 'Services' },
   { href: '/info', label: 'Info' },
   { href: '/about', label: 'About' },
@@ -61,7 +63,11 @@ export function BallMenu() {
   const [open, setOpen] = useState(false);
 
   const isActive = useCallback(
-    (href: string) => (href === '/' ? pathname === '/' : pathname.startsWith(href)),
+    (href: string) => {
+      // WORK carries a hash, which is not part of the path — compare the route.
+      const path = href.split('#')[0] || '/';
+      return path === '/' ? pathname === '/' : pathname.startsWith(path);
+    },
     [pathname],
   );
 
