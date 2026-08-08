@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { Bebas_Neue } from 'next/font/google';
 import { animate, motion, useMotionValue, useReducedMotion, useScroll, useTransform } from 'framer-motion';
 import { LogoDraw } from './LogoDraw';
+import { useHeldViewportHeight } from '@/lib/useHeldViewportHeight';
 
 const bebas = Bebas_Neue({ subsets: ['latin', 'latin-ext'], weight: '400' });
 
@@ -186,6 +187,8 @@ export function HeroExperience({ onRevealed }: { onRevealed?: () => void } = {})
   const { scrollY } = useScroll();
   const logoRef = useRef<HTMLDivElement>(null);
   const [dims, setDims] = useState({ endScroll: 600, yDock: -320, dockScale: 0.2 });
+  /** Held, so the backdrop below doesn't resize with a phone's sliding bar. */
+  const heldVh = useHeldViewportHeight();
 
   // Scroll-driven dock: shrink + lift the logo to the top; fade the text out.
   // Phones behave exactly like wide screens — the logo draws at full size in the
@@ -365,8 +368,11 @@ export function HeroExperience({ onRevealed }: { onRevealed?: () => void } = {})
 
   return (
     <>
-      {/* Dark hero backdrop — the first viewport; scrolls away under the logo. */}
-      <div className="h-dvh w-full bg-black" />
+      {/* Dark hero backdrop — the first viewport; scrolls away under the logo.
+          Pinned to the held viewport, like the runway below it, so a phone's
+          sliding chrome can't resize the page under a fixed scroll position.
+          `h-svh` is the first paint, before there is a measurement. */}
+      <div className="h-svh w-full bg-black" style={heldVh ? { height: heldVh } : undefined} />
 
       {/* Logo centred; "VISUAL STUDIO" overlaid at the logo's vertical centre.
           On scroll the logo docks to the top as a Home link; the text fades out. */}

@@ -9,7 +9,12 @@ export default function HomePage() {
           apart into lines that orbit "VISUAL STUDIO"; hovering a line freezes it
           and opens it into a media plane. The menu bar is hidden here and morphs
           in from the bouncing ball once the intro reveals (see BallMenu). */}
-      <section className="relative min-h-dvh">
+      {/* `svh`, not `dvh`: a phone's chrome slides in and out as you scroll,
+          and `dvh` follows it. Here that would change the height of the page
+          itself — the hero plus three viewports of runway below it — so the
+          document would shrink under a fixed scroll position and everything
+          would jump. `svh` is the small viewport: it holds still. */}
+      <section className="relative min-h-svh">
         <h1 className="sr-only">
           Attila Visual Studio — építészeti vizualizáció és fotográfia
         </h1>

@@ -8,6 +8,7 @@ import { mainTiles } from '@/content/mainTiles';
 import { selectedTile } from '@/lib/heroSequenceState';
 import { introAlreadyPlayed } from '@/lib/introPlayed';
 import { WORK_HASH } from '@/lib/anchors';
+import { useHeldViewportHeight } from '@/lib/useHeldViewportHeight';
 import { SequenceCaptions } from './SequenceCaptions';
 
 const bebas = Bebas_Neue({ subsets: ['latin', 'latin-ext'], weight: '400' });
@@ -241,6 +242,13 @@ export function HeroImageSequence() {
     front: false,
   });
 
+  // The height everything here is measured against, held still while a phone
+  // slides its chrome. Mirrored into a ref so the rAF loop below reads the
+  // current value without having to re-subscribe its listeners.
+  const heldVh = useHeldViewportHeight();
+  const heldVhRef = useRef(heldVh);
+  heldVhRef.current = heldVh;
+
   useEffect(() => {
     let raf = 0;
     // The pause exists to give the caption's type-in room to play. On a repeat
@@ -251,7 +259,10 @@ export function HeroImageSequence() {
     const update = () => {
       raf = 0;
       const vw = window.innerWidth;
-      const vh = window.innerHeight;
+      // Held, not read fresh: every pixel the phone's bar takes would otherwise
+      // re-lay-out the sequence mid-scroll — the big image resizing and the
+      // parked row shuffling under your thumb.
+      const vh = heldVhRef.current || window.innerHeight;
 
       // --- Geometry --------------------------------------------------------
       const logo = document.querySelector<HTMLElement>('[data-hero-logo]');
@@ -481,8 +492,15 @@ export function HeroImageSequence() {
 
   return (
     <>
-      {/* Scroll runway — gives the sequence its length. */}
-      <div aria-hidden className="relative" style={{ height: `${RUNWAY_VH * 100}dvh` }} />
+      {/* Scroll runway — gives the sequence its length, and three quarters of
+          the page's height with it. Pinned to the held viewport in px once
+          mounted, so a phone sliding its chrome cannot change how long the page
+          is; `svh` covers the first paint, before there is a measurement. */}
+      <div
+        aria-hidden
+        className="relative"
+        style={{ height: heldVh ? `${RUNWAY_VH * heldVh}px` : `${RUNWAY_VH * 100}svh` }}
+      />
 
       {/* Fixed stage. pointer-events-none so it never blocks the page — each
           image opts back in for itself once it has landed and become a tile. */}

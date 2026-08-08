@@ -46,8 +46,10 @@ export function Footer() {
           })}
         </div>
 
-        {/* Bottom center — two lists side by side */}
-        <div className="grid grid-cols-2 gap-8">
+        {/* Bottom center — two lists side by side. Centred on a phone, where
+            the three blocks stack and a left edge has nothing to line up with;
+            left-aligned again from `md`, where they sit in their columns. */}
+        <div className="grid grid-cols-2 gap-8 text-center md:text-left">
           <div>
             <p className="mb-3 text-xs uppercase tracking-[0.15em] text-white/45">
               Szolgáltatások
@@ -56,7 +58,9 @@ export function Footer() {
               {services.map((s) => (
                 <li key={s.id}>
                   <Link
-                    href="/services"
+                    // Straight to that category's row — the services page gives
+                    // each <section> its own id.
+                    href={`/services#${s.id}`}
                     className="text-sm capitalize transition-colors hover:text-white/60"
                   >
                     {s.title}
@@ -83,8 +87,8 @@ export function Footer() {
           </div>
         </div>
 
-        {/* Bottom right — contact email */}
-        <div className="md:text-right">
+        {/* Bottom right — contact email. Centred on a phone with the rest. */}
+        <div className="text-center md:text-right">
           <p className="mb-3 text-xs uppercase tracking-[0.15em] text-white/45">Kapcsolat</p>
           <a
             href={`mailto:${EMAIL}`}

@@ -306,7 +306,9 @@ export function ServicesInteractive() {
           and visible while a panel is open; the panel lies over it. */}
       <div className="space-y-12 sm:space-y-14">
         {services.map((s) => (
-          <section key={s.id}>
+          // The id is the footer's link target; the margin keeps the heading
+          // clear of the fixed top bar when one lands here.
+          <section key={s.id} id={s.id} className="scroll-mt-24">
             <h2
               className={`${anton.className} mb-2.5 text-2xl uppercase leading-none tracking-[0.01em] text-white sm:text-3xl`}
             >
