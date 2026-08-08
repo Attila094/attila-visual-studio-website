@@ -1,18 +1,36 @@
 /**
  * The INFO page — the studio's project workflow, phase by phase.
  *
- * Transcribed from the `infopage.jpg` layout reference: one big INFO title, then
- * a stack of FÁZIS headings, each holding uppercase sub-headings with their own
- * paragraphs beneath.
+ * Transcribed from the `infopage.jpg` layout reference: the INFO title over
+ * three service plates, then one dark panel holding the five phases. Each
+ * phase is a heading and a run of blocks: copy under an uppercase lead-in, or
+ * a row of labelled plates.
  */
-export interface InfoBlock {
-  /** Uppercase lead-in above the paragraphs. Omitted where the phase has none. */
+
+/** The three tracks named across the top of the reference. The newline is the
+ *  break it draws — at this plate width the line would otherwise just fit. */
+export const infoTracks = ['Látvány\ntervezés', 'Építészet', 'Fotózás'];
+
+/** Copy under an uppercase lead-in. `href` turns the paragraphs into a link. */
+export interface InfoTextBlock {
+  kind: 'text';
   heading?: string;
-  /** Each string is its own paragraph. */
-  lines: string[];
-  /** When set, the block's lines become a link to this route. */
+  paragraphs: string[];
   href?: string;
 }
+
+/**
+ * A row of labelled plates. `sm` is the five-across strip of deliverables under
+ * ADATSZOLGÁLTATÁS; `lg` the three-across row of modelling levels. A newline in
+ * a label is a line break the reference draws, not a wrap.
+ */
+export interface InfoPlatesBlock {
+  kind: 'plates';
+  size: 'sm' | 'lg';
+  items: string[];
+}
+
+export type InfoBlock = InfoTextBlock | InfoPlatesBlock;
 
 export interface InfoPhase {
   title: string;
@@ -21,101 +39,93 @@ export interface InfoPhase {
 
 export const infoPhases: InfoPhase[] = [
   {
-    title: 'Fázis 00 - Előkészítés',
+    title: 'Fázis 01 – Előkészítés',
     blocks: [
       {
+        kind: 'text',
         heading: 'Kapcsolatfelvétel',
-        lines: ['Vedd fel velem a kapcsolatot, látogass el a kapcsolatok oldalra'],
+        paragraphs: ['Vedd fel velem a kapcsolatot, látogass el a CONTACT oldalra'],
         href: '/contact',
       },
       {
+        kind: 'text',
         heading: 'Adatszolgáltatás',
-        lines: [
-          'Mielőtt a végső árajánlatot elkészítenénk további információra lesz szükségünk,',
-          '– 2D épület és környezet tervek (dwg, dwf, pdf, etc…)',
-          '– 3D épület modellezés (fbx, dae, 3ds, obj, etc…) or CAD/BIM adatok az épületről (ArchiCAD, AutoCAD, Revit, IFC etc…)',
-          '– Amennyiben az adatok megosztása nem lehetséges, print-screen készítése is elegendő lehet',
-          '– Képek a környezetről, szomszédokról (landscape, streets, etc…)',
-          '– Referenciaképek a kívánt képek hangulatához.',
-          '*a megosztott fájlokat bizalmasan kezeljük /Terms & Conditions, Privacy policy & GDPR/.',
-        ],
+        paragraphs: ['Az árajánlat elkészítéséhez az alábbi információkra lenne szükségem:'],
       },
       {
+        kind: 'plates',
+        size: 'sm',
+        items: ['CAD tervek', '3D modell', 'anyagok\ntextúrák', 'mobiliák', 'mood'],
+      },
+      {
+        kind: 'text',
         heading: 'Árajánlat',
-        lines: [
-          'Miután minden kapott adatot átnéztünk elkészítjük a végleges árajánlatot és elküldjük jóváhagyásra.',
+        paragraphs: [
+          'A kapott adatszolgáltatás és egyeztetett munkaleírás alapján elkészítem az árajánlatot',
         ],
       },
       {
-        heading: 'Szerződés – előleg kifizetése',
-        lines: [
-          'Röviddel a végső árajánlat elfogadását követően elkészítjük a szerződést.',
-          'Megkezdjük a munkát a szerződés aláírása és az előleg (40%-a a teljes összegnek) kifizetését követően.',
-        ],
-      },
-    ],
-  },
-  {
-    title: 'Fázis 01 - Modellezés',
-    blocks: [
-      {
-        heading: 'A – 3D model felépítése – modelt nem szolgáltatott',
-        lines: [
-          'Az első rendereken az épületet anyagok és textúrák nélkül ábrázoljuk (az ügyfél jóváhagyhatja az épület és környezet modellt). Az eredmény elküldését követően várjuk a visszajelzéseket. Ebben a fázisban van lehetősége az ügyfélnek a modell részleteket változtatni.',
-        ],
-      },
-      {
-        heading: 'B – Javítás és részletezés – 3D modelt szolgáltatott',
-        lines: [
-          'Amennyiben modell elérhető, elvégzünk néhány javítást illetve további részletek kidolgozását. Építészeti látványtervezésnél kiemelkedően fontos a modell részletezettsége. A modell apró részletei adják meg a képek valóságszerűségét.',
-        ],
-      },
-      {
-        heading: 'C – Részletes 3D model importálása – részletes 3D modelt szolgáltatott',
-        lines: [
-          'Ellenőrzés, optimalizálás és felkészítés a látványtervezés elkezdéséhez.',
-          'Amennyiben az ügyfél szeretné teljesíteni a részletes 3D modell követelményeit az alábbi lépések elvégzésével megteheti. A követelmények teljesítése jelentős pénz és időbeli csökkenést eredményez.',
+        kind: 'text',
+        heading: 'Szerződés',
+        paragraphs: [
+          'Az árajánlat elfogadását követően elkészítjük a szerződést. A következő fázis a szerződés aláírása és az előleg (40%-a a teljes összegnek) kifizetését követően kezdődik.',
         ],
       },
     ],
   },
   {
-    title: 'Fázis 02 - Előnézet',
+    title: 'Fázis 02 – Előnézet',
     blocks: [
+      { kind: 'text', heading: 'Modellezés', paragraphs: [] },
       {
-        heading: 'Megvilágítás, kompozíció, anyagok/textúrák',
-        lines: [
+        kind: 'plates',
+        size: 'lg',
+        items: ['Nincs\n3D modell', 'Alap\n3D modell', 'Részletes\n3D modell'],
+      },
+      {
+        kind: 'text',
+        paragraphs: [
+          'Kapott modell ellenőrzése, optimalizálása és felkészítése a látványtervezés elkezdéséhez. Modell tér berendezése előre elkészített modell elemekkel. Amennyiben az ügyfél szeretne egyedileg tervezett mobiliákat vagy pontos gyártói modelleket alkalmazni, egyedi megegyezés alapján lehetséges.',
+        ],
+      },
+      {
+        kind: 'text',
+        heading: 'Nézőpontok, kompozíció, megvilágítás, anyagok/textúrák',
+        paragraphs: [
           'Elkészítjük a modell bevilágítását, a kamerák beállítását és a jelenetet alapvetően meghatározó alap anyagokat. Az eredmény elküldését követően várjuk a visszajelzéseket. Ebben a fázisban van lehetősége az ügyfélnek a bevilágítás, kamerák és alap anyagok módosítására.',
         ],
       },
     ],
   },
   {
-    title: 'Fázis 03 - Pre-final',
+    title: 'Fázis 03 – Munkaközi',
     blocks: [
       {
-        lines: [
-          'Ebben a fázisban az észrevételek alapján elvégezzük a módosításokat és tovább dolgozzuk a jelenetet. A renderek közel végleges állapotot fognak mutatni, részletes anyagokkal, további modellekkel (amennyiben igényelt) és kívánt mennyiségű emberrel. Ebben a fázisban van lehetősége az ügyfélnek az anyagok, további modellek és emberek módosítására.',
+        kind: 'text',
+        paragraphs: [
+          'Ebben a fázisban az észrevételek alapján elvégezem a kért módosításokat és tovább dolgozom a jelenetet. A renderek közel “végleges” állapotot fognak mutatni, részletes anyagokkal, megvilágítással, kiválasztott modellekkel. Ebben a fázisban van lehetősége az ügyfélnek az anyagok és modellek módosítására.',
+          'Ezt követően további módosításra csak felár ellenében van lehetőség.',
         ],
       },
     ],
   },
   {
-    // The reference numbers this 03 as well — kept verbatim.
-    title: 'Fázis 03 - Final',
+    title: 'Fázis 04 – Véglegesítés',
     blocks: [
       {
-        lines: [
-          'A végső jóváhagyást követően a rendereket elkészítjük. Ez a fázis néhány napot vesz igénybe a project léptékétől, a kívánt képek mennyiségétől és minőségétől függően.',
+        kind: 'text',
+        paragraphs: [
+          'A végső jóváhagyást követően a rendereket és utómunkálatokat elkészítem. Ez a fázis néhány napot vesz igénybe a project léptékétől, a képek mennyiségétől és kívánt minőségétől függően.',
         ],
       },
     ],
   },
   {
-    title: 'Fázis 04 - Kifizetés',
+    title: 'Fázis 05 – Kifizetés',
     blocks: [
       {
-        lines: ['A fizetés részletei egyéni egyeztetés alapján (fennmaradó 50%).'],
+        kind: 'text',
+        paragraphs: ['A fizetés részletei egyéni egyeztetés alapján (fennmaradó 60%).'],
       },
     ],
   },

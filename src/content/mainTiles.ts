@@ -1,5 +1,10 @@
 // Local content for the 5 centered service tiles. Populate directly here (or
 // swap for JSON/MD/MDX frontmatter with the same shape).
+//
+// Order is significant: tile i is the landing place of `heroSequenceImages[i]`,
+// so the two lists have to be reordered together. The ids are what pick a
+// gallery layout in <ProjectsGallery>, so they stay attached to their content
+// however the row is ordered.
 
 export interface MainTile {
   id: string;
@@ -12,25 +17,25 @@ export interface MainTile {
 
 export const mainTiles: MainTile[] = [
   {
-    id: 'epiteszet',
+    id: 'vizualizacio',
     number: '01',
+    title: 'Építészeti vizualizáció',
+    summary:
+      'Fotorealisztikus 3D látványtervek 3ds Max, V-Ray és Twinmotion segítségével — még az első kapavágás előtt.',
+    points: ['Külső és belső render', 'Animáció és bejárás', '360°-os panoráma', 'Utómunka'],
+  },
+  {
+    id: 'epiteszet',
+    number: '02',
     title: 'Építészet & Belsőépítészet',
     summary:
       'Koncepciótól a kiviteli tervig — lakó-, iroda- és vendéglátóterek, amelyek egyszerre funkcionálisak és karakteresek.',
     points: ['Koncepcióterv', 'Engedélyezési terv', 'Kiviteli terv', 'Belsőépítészeti tervezés'],
   },
   {
-    id: 'vizualizacio',
-    number: '02',
-    title: 'Vizualizáció',
-    summary:
-      'Fotorealisztikus 3D látványtervek 3ds Max, V-Ray és Twinmotion segítségével — még az első kapavágás előtt.',
-    points: ['Külső és belső render', 'Animáció és bejárás', '360°-os panoráma', 'Utómunka'],
-  },
-  {
     id: 'foto-video',
     number: '03',
-    title: 'Fotózás & Videózás',
+    title: 'Fotó és Videógráfia',
     summary:
       'Építészeti és belsőépítészeti fotó- és videódokumentáció, amely hűen és igényesen mutatja be az elkészült teret.',
     points: ['Építészeti fotó', 'Rövid videó / reels', 'Drónfelvétel', 'Utómunka'],
@@ -38,7 +43,7 @@ export const mainTiles: MainTile[] = [
   {
     id: 'grafika',
     number: '04',
-    title: 'Grafika',
+    title: 'Grafikai tervezés',
     summary:
       'Arculat, nyomdai és digitális anyagok, amelyek egységes vizuális nyelvet adnak a projektnek és a márkának.',
     points: ['Arculattervezés', 'Nyomdai előkészítés', 'Prezentációs anyagok', 'Digitális grafika'],

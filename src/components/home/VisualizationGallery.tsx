@@ -1,120 +1,94 @@
 'use client';
 
-import { useRef, useState } from 'react';
-import { Bebas_Neue } from 'next/font/google';
-import { motion, useReducedMotion, useTransform } from 'framer-motion';
-import { visualizationProjects } from '@/content/visualizationProjects';
-import { usePinnedScrollProgress, wrap } from './usePinnedScrollProgress';
-import { useHasHoverSupport } from '@/lib/useHasHoverSupport';
+import { useEffect, useLayoutEffect, useState } from 'react';
+import dynamic from 'next/dynamic';
+import Image from 'next/image';
+import { motion } from 'framer-motion';
+import { vizAnimations, vizPanoramas, vizStills } from '@/content/visualization';
+import { morphSpring } from '@/lib/motion';
 
-const bebas = Bebas_Neue({ subsets: ['latin', 'latin-ext'], weight: '400' });
+/** WebGL: it can't render on the server, and three.js has no business in the
+ *  page bundle until a panorama is actually opened. */
+const PanoramaSphere = dynamic(
+  () => import('@/components/PanoramaSphere').then((m) => m.PanoramaSphere),
+  { ssr: false },
+);
 
-/** Size of the incoming thumbnail, as a fraction of the full image stage. */
-const THUMB_SCALE = 0.17;
-/** Gap between the stage's bottom edge and the thumbnail, as a fraction of H. */
-const THUMB_GAP = 0.025;
+type Filter = 'still' | 'panoramic' | 'animation';
 
-/**
- * Resting offsets for the incoming thumbnail, in % of the stage box.
- *  x → right edge of the thumbnail meets the right edge of the stage.
- *  y → thumbnail sits fully BELOW the stage: half the box (0.5) clears the
- *      bottom edge, + the gap, + half the thumbnail's own scaled height.
- */
-const THUMB_X = ((1 - THUMB_SCALE) / 2) * 100;
-const THUMB_Y = (0.5 + THUMB_GAP + THUMB_SCALE / 2) * 100;
-
-type Filter = 'all' | 'still' | 'panoramic' | 'animation';
-
-const FILTERS: { id: Exclude<Filter, 'all'>; label: string }[] = [
+const FILTERS: { id: Filter; label: string }[] = [
   { id: 'still', label: 'Still' },
   { id: 'panoramic', label: 'Panoramic' },
   { id: 'animation', label: 'Animation' },
 ];
 
+/** Gap between stills, in px — matched by the row unit below, not by `gap-*`. */
+const GAP = 12;
+
 /**
- * "02 Vizualizáció" — pinned-scroll infinite gallery matching
- * "visualization layout menu.jpg": filter bar on top, project text on the left,
- * the featured render on the right, and the next project waiting as a thumbnail
- * in the container's bottom-right corner, directly under the image.
+ * The stills keep their own proportions, so a plain grid row would end ragged:
+ * the shorter of the two renders leaves dead space under it until the next row.
+ * This is the row-span trick instead — the grid gets 1px rows and no row gap,
+ * and every tile claims exactly as many of them as it is tall (plus its own
+ * bottom margin, which is where the gap comes from). Each column then packs
+ * against whatever is above it in that column alone, while the two columns stay
+ * on the same vertical rails. An opened tile still spans both.
+ */
+function rowSpan(width: number, height: number, boxWidth: number) {
+  if (!boxWidth) return 1;
+  return Math.max(1, Math.ceil((boxWidth * (height / width)) + GAP));
+}
+
+
+/**
+ * "01 Építészeti vizualizáció" — three sets behind one filter bar.
  *
- * Scrolling with the cursor inside the container drives the handoff instead of
- * the page: each scroll plays one automatic transition where the current image
- * slides up behind the stage's top edge while the thumbnail scales up and
- * travels into its place, and the captions cross-fade.
+ * Still and Panoramic share an interaction: a two-column grid where one tile at
+ * a time opens across the full width, and a click anywhere outside it closes it
+ * again. For a panorama that open state is also what mounts the drag-to-look
+ * sphere, so only ever one WebGL context is alive no matter how many renders
+ * are in the set.
  */
 export function VisualizationGallery() {
-  const [filter, setFilter] = useState<Filter>('all');
-  const hasHover = useHasHoverSupport();
-  const reduce = useReducedMotion() ?? false;
+  const [filter, setFilter] = useState<Filter>('still');
+  const [open, setOpen] = useState<string | null>(null);
 
-  const projects = visualizationProjects;
-  const count = projects.length;
+  // Switching sets closes whatever was open — its tile is gone.
+  useEffect(() => setOpen(null), [filter]);
 
-  // Only the Still set is a photographic gallery; the others are placeholders.
-  const showsGallery = filter === 'all' || filter === 'still';
+  // The row spans are computed from the column's real width, which follows the
+  // container. Measured before paint, so the tiles never flash at the wrong
+  // height on the way in.
+  // A callback ref, not `useRef`: the grid only exists under the Still filter,
+  // so the measurement has to be tied to the node arriving rather than to this
+  // component mounting.
+  const [gridEl, setGridEl] = useState<HTMLDivElement | null>(null);
+  const [gridWidth, setGridWidth] = useState(0);
+  useLayoutEffect(() => {
+    if (!gridEl) return;
+    const measure = () => setGridWidth(gridEl.clientWidth);
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(gridEl);
+    return () => ro.disconnect();
+  }, [gridEl]);
+  const colWidth = gridWidth ? (gridWidth - GAP) / 2 : 0;
 
-  const { containerRef, t, index, step } = usePinnedScrollProgress(
-    count,
-    hasHover && showsGallery,
-    reduce,
-  );
-
-  const curIdx = wrap(index, count);
-  const nextIdx = wrap(index + 1, count);
-  const current = projects[curIdx];
-  const next = projects[nextIdx];
-
-  // --- Derived animation values ------------------------------------------
-  // Outgoing: slides up and is clipped by the stage's top edge.
-  const outY = useTransform(t, [0, 1], ['0%', '-100%']);
-
-  // Incoming: travels from the thumbnail slot below the stage into the stage,
-  // scaling up as it goes.
-  const inScale = useTransform(t, [0, 1], [THUMB_SCALE, 1]);
-  const inX = useTransform(t, [0, 1], [`${THUMB_X}%`, '0%']);
-  const inY = useTransform(t, [0, 1], [`${THUMB_Y}%`, '0%']);
-  const inRadius = useTransform(t, [0, 1], ['3px', '0px']);
-
-  // Captions: the current name slides up and out of the top of its (clipped)
-  // box, then the new one rises into place from below.
-  const curTextY = useTransform(t, [0, 0.5], ['0%', '-115%']);
-  const curTextOpacity = useTransform(t, [0, 0.38, 0.5], [1, 1, 0]);
-  const nextTextY = useTransform(t, [0.5, 1], ['115%', '0%']);
-  const nextTextOpacity = useTransform(t, [0.5, 0.62, 1], [0, 1, 1]);
-
-  // --- Touch fallback: a vertical swipe advances one image ----------------
-  const swipe = useRef({ y: 0, active: false });
-  const touchHandlers =
-    hasHover || !showsGallery
-      ? {}
-      : {
-          onPointerDown: (e: React.PointerEvent) => {
-            swipe.current = { y: e.clientY, active: true };
-          },
-          onPointerUp: (e: React.PointerEvent) => {
-            if (!swipe.current.active) return;
-            swipe.current.active = false;
-            const dy = swipe.current.y - e.clientY;
-            if (Math.abs(dy) > 40) step(dy > 0 ? 1 : -1);
-          },
-          onPointerCancel: () => {
-            swipe.current.active = false;
-          },
-        };
+  // A click anywhere outside the open tile closes it. Clicking another tile
+  // fires this first and its own onClick second, so the grid simply switches.
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: PointerEvent) => {
+      if (!(e.target as HTMLElement).closest?.('[data-viz-open]')) setOpen(null);
+    };
+    document.addEventListener('pointerdown', onDown);
+    return () => document.removeEventListener('pointerdown', onDown);
+  }, [open]);
 
   return (
     <div className="rounded-3xl bg-[#111111] p-3 ring-1 ring-white/10 sm:p-5">
-      {/* Filter bar — ALL stays left, the category group is centred. */}
+      {/* Filter bar — the three sets, centred. */}
       <div className="relative mb-4 flex flex-wrap items-center justify-center gap-2">
-        <button
-          type="button"
-          onClick={() => setFilter('all')}
-          className={`rounded-full px-6 py-2 text-xs font-semibold uppercase tracking-widest transition-colors sm:absolute sm:left-0 ${
-            filter === 'all' ? 'bg-white text-black' : 'bg-white/10 text-white/60 hover:text-white'
-          }`}
-        >
-          All
-        </button>
         <div className="flex overflow-hidden rounded-full bg-white/10">
           {FILTERS.map((f) => (
             <button
@@ -131,121 +105,115 @@ export function VisualizationGallery() {
         </div>
       </div>
 
-      {showsGallery ? (
+      {filter === 'still' && (
         <div
-          ref={containerRef}
-          {...touchHandlers}
-          className="grid grid-cols-1 items-center gap-4 md:grid-cols-[minmax(150px,22%)_1fr]"
+          ref={setGridEl}
+          // 1px rows and no row gap: the span each tile claims is its own
+          // height, so nothing is rounded up into dead space. `items-start`
+          // keeps a tile from being stretched to its row, which would override
+          // the aspect ratio.
+          style={{ gridAutoRows: '1px', columnGap: GAP, rowGap: 0 }}
+          className="grid grid-cols-2 items-start"
         >
-          {/* Left — caption. The box is clipped, so the outgoing name slides up
-              and out of the top while the incoming one rises in from below. */}
-          <div className="relative min-h-[92px] overflow-hidden md:min-h-[120px]">
-            <motion.div style={{ opacity: curTextOpacity, y: curTextY }}>
-              <Caption {...current} />
-            </motion.div>
-            <motion.div
-              className="absolute inset-0"
-              style={{ opacity: nextTextOpacity, y: nextTextY }}
-              aria-hidden
-            >
-              <Caption {...next} />
-            </motion.div>
-          </div>
-
-          {/* Right — image column. Bottom padding reserves the strip the
-              thumbnail parks in; the column itself is NOT clipped, so the
-              thumbnail can sit outside (below) the stage.
-
-              Every project is rendered ONCE in each layer and simply toggled,
-              rather than swapping `src` on two shared elements — swapping meant
-              the browser had to decode a new image mid-handoff, which is what
-              caused the flicker. Nothing reloads now. */}
-          <div className="relative w-full pb-[12%]" aria-hidden>
-            {/* Stage — overflow-hidden gives the outgoing image a top boundary
-                to disappear behind. */}
-            <div className="relative aspect-[16/10] w-full overflow-hidden bg-black/40">
-              {projects.map((p, i) => (
-                <motion.div
-                  key={`stage-${p.name}`}
-                  className="absolute inset-0"
-                  style={
-                    i === curIdx
-                      ? { y: outY, opacity: 1, willChange: 'transform' }
-                      : { opacity: 0 }
-                  }
-                >
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={p.src} alt="" draggable={false} className="h-full w-full object-cover" />
-                </motion.div>
-              ))}
-            </div>
-
-            {/* Incoming — siblings of the stage (so they aren't clipped),
-                occupying the same box, parked below-right until they grow in. */}
-            {projects.map((p, i) => (
-              <motion.div
-                key={`incoming-${p.name}`}
-                className="pointer-events-none absolute inset-x-0 top-0 aspect-[16/10] overflow-hidden"
-                style={
-                  i === nextIdx
-                    ? {
-                        scale: inScale,
-                        x: inX,
-                        y: inY,
-                        borderRadius: inRadius,
-                        opacity: 1,
-                        willChange: 'transform',
-                      }
-                    : { opacity: 0 }
-                }
+          {vizStills.map((still) => {
+            const isOpen = open === still.src;
+            return (
+              <motion.button
+                key={still.src}
+                type="button"
+                layout
+                {...(isOpen ? { 'data-viz-open': true } : {})}
+                onClick={() => setOpen(isOpen ? null : still.src)}
+                transition={morphSpring}
+                aria-expanded={isOpen}
+                // Its own proportions at either size, so `object-cover` never
+                // has anything to crop — opening only widens the render.
+                style={{
+                  aspectRatio: `${still.width} / ${still.height}`,
+                  gridRowEnd: `span ${rowSpan(
+                    still.width,
+                    still.height,
+                    isOpen ? gridWidth : colWidth,
+                  )}`,
+                  marginBottom: GAP,
+                }}
+                className={`relative block w-full overflow-hidden bg-white/[0.03] ${
+                  isOpen ? 'col-span-2' : ''
+                }`}
               >
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={p.src} alt="" draggable={false} className="h-full w-full object-cover" />
-              </motion.div>
-            ))}
-          </div>
+                <Image
+                  src={still.src}
+                  alt="Építészeti látványterv"
+                  fill
+                  sizes={isOpen ? '(min-width: 768px) 60vw, 92vw' : '(min-width: 768px) 30vw, 46vw'}
+                  className="object-cover"
+                />
+              </motion.button>
+            );
+          })}
         </div>
-      ) : (
-        <ImagePlaceholder label={filter === 'panoramic' ? 'Panoramic' : 'Animation'} />
       )}
-    </div>
-  );
-}
 
-function Caption({
-  name,
-  studio,
-  location,
-}: {
-  name: string;
-  studio: string;
-  location: string;
-}) {
-  return (
-    <div>
-      <h3
-        className={`${bebas.className} text-2xl uppercase tracking-[0.12em] text-white sm:text-3xl`}
-      >
-        {name}
-      </h3>
-      <p className="mt-1 text-[11px] lowercase tracking-wide text-white/55">{studio}</p>
-      <p className="text-[11px] uppercase tracking-[0.14em] text-white/80">{location}</p>
-    </div>
-  );
-}
+      {filter === 'panoramic' && (
+        <div className="grid grid-cols-2 gap-3">
+          {vizPanoramas.map((pano) => {
+            const isOpen = open === pano.src;
+            return (
+              <motion.div
+                key={pano.src}
+                layout
+                {...(isOpen ? { 'data-viz-open': true } : {})}
+                transition={morphSpring}
+                className={isOpen ? 'col-span-2' : ''}
+              >
+                {isOpen ? (
+                  // The sphere replaces the flat tile rather than sitting on
+                  // top of it: it mounts here and nowhere else, so the context
+                  // dies with the tile. Closing is the click outside — the
+                  // viewer owns every drag inside its own frame.
+                  <PanoramaSphere src={pano.src} poster={pano.poster} className="rounded-lg" />
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setOpen(pano.src)}
+                    aria-label="360°-os panoráma megnyitása"
+                    className="relative block aspect-[2/1] w-full overflow-hidden rounded-lg bg-white/[0.03]"
+                  >
+                    <Image
+                      src={pano.poster}
+                      alt="360°-os panoráma látványterv"
+                      fill
+                      sizes="(min-width: 768px) 30vw, 46vw"
+                      className="object-cover"
+                    />
+                    <span className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent p-2 text-[0.6rem] uppercase tracking-[0.3em] text-white/70">
+                      360°
+                    </span>
+                  </button>
+                )}
+              </motion.div>
+            );
+          })}
+        </div>
+      )}
 
-/** Shown for the Panoramic / Animation filters until their media exists. */
-function ImagePlaceholder({ label }: { label: string }) {
-  return (
-    <div className="flex aspect-[16/9] w-full flex-col items-center justify-center gap-3 bg-white/[0.03] ring-1 ring-white/10">
-      <span className="grid h-12 w-12 place-items-center rounded-full text-white/50 ring-1 ring-white/20">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-          <path d="M19 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2zm0 16H5l3.5-4.5 2.5 3 3.5-4.5L19 19z" />
-        </svg>
-      </span>
-      <span className="text-[0.6rem] uppercase tracking-[0.3em] text-white/45">
-        {label} — hamarosan
-      </span>
+      {filter === 'animation' && (
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+          {vizAnimations.map((clip) => (
+            <video
+              key={clip.src}
+              src={clip.src}
+              poster={clip.poster}
+              controls
+              playsInline
+              // Only the poster travels until the visitor presses play.
+              preload="none"
+              aria-label="Építészeti animáció"
+              className="block h-auto w-full rounded-lg bg-white/[0.03]"
+            />
+          ))}
+        </div>
+      )}
     </div>
   );
 }

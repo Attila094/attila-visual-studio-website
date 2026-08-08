@@ -5,6 +5,7 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { AnimatePresence, motion } from 'framer-motion';
 import { galleryProjects, type Category, type GalleryItem } from '@/content/galleryProjects';
+import { allPhotos, allVideos } from '@/content/photoVideo';
 import { projectLayoutId } from '@/lib/motion';
 import { shouldBypassOptimizer } from '@/lib/image';
 import { VisualizationGallery } from './VisualizationGallery';
@@ -382,13 +383,10 @@ function PrintLayout() {
 
 /**
  * The "03 Fotózás & Videózás" content: ALL keeps its original left position
- * while the Photo · Video group is centred. Photo shows 4 image slots, Video
- * shows 2 video slots, ALL shows both. Swap a placeholder for real media by
- * rendering an <img>/<video> in place of <MediaPlaceholder>.
+ * while the Photo · Video group is centred. Photo shows the stills, Video the
+ * films, ALL shows both — everything under `projects/Fotó és video`, by way of
+ * `photoVideo.ts`.
  */
-const PHOTO_SLOTS = 4;
-const VIDEO_SLOTS = 2;
-
 function MediaPlaceholder({ kind, label }: { kind: 'image' | 'video'; label: string }) {
   return (
     <div
@@ -455,20 +453,59 @@ function PhotoVideoLayout() {
       </div>
 
       <div className="flex flex-col gap-3">
-        {showPhoto && (
-          <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-            {Array.from({ length: PHOTO_SLOTS }, (_, i) => (
-              <MediaPlaceholder key={`photo-${i}`} kind="image" label={`Fotó ${pad(i + 1)}`} />
-            ))}
-          </div>
-        )}
-        {showVideo && (
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-            {Array.from({ length: VIDEO_SLOTS }, (_, i) => (
-              <MediaPlaceholder key={`video-${i}`} kind="video" label={`Videó ${pad(i + 1)}`} />
-            ))}
-          </div>
-        )}
+        {showPhoto &&
+          (allPhotos.length ? (
+            // Columns, not a grid: the shoots run about four portraits to every
+            // landscape, and a single tile aspect would crop most of them badly.
+            // In a column layout each still keeps its own shape and the masonry
+            // falls out of the flow for free.
+            <div className="columns-2 gap-3 md:columns-3 lg:columns-4 [&>*]:mb-3">
+              {allPhotos.map((photo) => (
+                <Image
+                  key={photo.src}
+                  src={photo.src}
+                  alt={`${photo.set} — építészeti fotó`}
+                  width={photo.width}
+                  height={photo.height}
+                  sizes="(min-width: 1024px) 22vw, (min-width: 768px) 30vw, 45vw"
+                  className="block h-auto w-full bg-white/[0.03]"
+                />
+              ))}
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+              {Array.from({ length: 4 }, (_, i) => (
+                <MediaPlaceholder key={`photo-${i}`} kind="image" label={`Fotó ${pad(i + 1)}`} />
+              ))}
+            </div>
+          ))}
+        {showVideo &&
+          (allVideos.length ? (
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+              {allVideos.map((video) => (
+                <video
+                  key={video.src}
+                  src={video.src}
+                  poster={video.poster}
+                  controls
+                  playsInline
+                  // Nothing but the poster travels until the visitor presses
+                  // play — the film is 11 MB.
+                  preload="none"
+                  width={video.width}
+                  height={video.height}
+                  aria-label={`${video.set} — építészeti videó`}
+                  className="block h-auto w-full bg-white/[0.03]"
+                />
+              ))}
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+              {Array.from({ length: 2 }, (_, i) => (
+                <MediaPlaceholder key={`video-${i}`} kind="video" label={`Videó ${pad(i + 1)}`} />
+              ))}
+            </div>
+          ))}
       </div>
     </div>
   );

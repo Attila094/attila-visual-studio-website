@@ -1,20 +1,111 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import { Bebas_Neue, Poppins } from 'next/font/google';
-import { infoPhases } from '@/content/info';
+import { Anton, Poppins } from 'next/font/google';
+import { infoPhases, infoTracks, type InfoBlock } from '@/content/info';
 import { PAGE_TITLE_CLASS, PAGE_TITLE_STYLE, PAGE_TOP_PAD } from '@/components/pageTitle';
 
-/** Every title on the page is Bebas; the paragraphs stay in the geometric sans
- *  of the reference. Both are scoped here — the rest of the site is on Inter. */
+/** The phase headings and every plate label are the heavy condensed face of the
+ *  reference; the copy under them is the geometric sans. INFO itself comes from
+ *  the shared page-title style. */
 // latin-ext, not just latin: the phase titles carry Ő and Ű, which live outside
 // the basic Latin subset and would otherwise fall back to another face.
-const bebas = Bebas_Neue({ subsets: ['latin', 'latin-ext'], weight: '400' });
-const geo = Poppins({ subsets: ['latin', 'latin-ext'], weight: ['300', '400'] });
+const anton = Anton({ subsets: ['latin', 'latin-ext'], weight: '400' });
+const geo = Poppins({ subsets: ['latin', 'latin-ext'], weight: ['300', '700'] });
+
+/** Sampled out of `infopage.jpg`: the three service plates, the panel that
+ *  holds the phases, and the labelled plates inside it. */
+const TRACK = '#333333';
+const PANEL = '#262626';
+const PLATE = '#3c3c3c';
+
+/** Plate proportions, straight from the reference — the five-across strip is a
+ *  tall sliver, the three-across row nearly square, and both come out the same
+ *  height at the widths they are used. */
+const PLATE_ASPECT = {
+  sm: 'aspect-[401/631]',
+  lg: 'aspect-[678/640]',
+} as const;
+
+/** Their columns. Spelled out rather than built from a template so Tailwind's
+ *  scanner sees every class it has to generate. */
+const PLATE_COLS = {
+  sm: 'grid-cols-2 sm:grid-cols-3 md:grid-cols-5',
+  lg: 'grid-cols-1 sm:grid-cols-3',
+} as const;
+
+/** The wide row is set in caps in the reference; the narrow strip is not. */
+const PLATE_TEXT = {
+  sm: 'text-[clamp(0.95rem,2.4vw,2.2rem)]',
+  lg: 'text-[clamp(1.2rem,4vw,3.6rem)] uppercase',
+} as const;
+
+/** Body copy. Dim, as drawn — the lead-ins above it carry the contrast. */
+const BODY_CLASS =
+  'text-[clamp(0.9rem,1.75vw,1.6rem)] font-light leading-[1.45] text-white/40';
+
+/**
+ * The space above a block, which the reference varies by what precedes it: a
+ * phase heading stands well clear, copy following a plate row sits right under
+ * it, and everything else keeps an even rhythm.
+ */
+function gapAbove(block: InfoBlock, prev: InfoBlock | undefined) {
+  if (!prev) return 'mt-10';
+  if (prev.kind === 'plates') return 'mt-2';
+  return block.kind === 'plates' ? 'mt-6' : 'mt-5';
+}
+
+function Block({ block, className = '' }: { block: InfoBlock; className?: string }) {
+  if (block.kind === 'plates') {
+    return (
+      <div className={`grid gap-3 sm:gap-4 ${PLATE_COLS[block.size]} ${className}`}>
+        {block.items.map((item) => (
+          <div
+            key={item}
+            style={{ backgroundColor: PLATE }}
+            className={`flex items-center justify-center rounded-xl p-3 text-center ${PLATE_ASPECT[block.size]}`}
+          >
+            {/* The labels break where the reference breaks them. */}
+            <span
+              className={`${anton.className} whitespace-pre-line leading-[1.15] text-white ${PLATE_TEXT[block.size]}`}
+            >
+              {item}
+            </span>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  const body = block.paragraphs.map((paragraph, i) => (
+    <p key={paragraph} className={`${BODY_CLASS} ${i ? 'mt-6' : 'mt-1.5'}`}>
+      {paragraph}
+    </p>
+  ));
+
+  return (
+    <div className={className}>
+      {block.heading && (
+        <p
+          className={`${geo.className} text-[clamp(0.95rem,2.3vw,2.1rem)] font-bold uppercase leading-tight tracking-[0.05em] text-white/60`}
+        >
+          {block.heading}
+        </p>
+      )}
+      {block.href ? (
+        <Link href={block.href} className="block transition-opacity hover:opacity-60">
+          {body}
+        </Link>
+      ) : (
+        body
+      )}
+    </div>
+  );
+}
 
 export const metadata: Metadata = {
   title: 'Info',
   description:
-    'A látványtervezési munkafolyamat fázisról fázisra: előkészítés, modellezés, előnézet, pre-final, final és kifizetés.',
+    'A látványtervezési munkafolyamat fázisról fázisra: előkészítés, előnézet, munkaközi, véglegesítés és kifizetés.',
 };
 
 export default function InfoPage() {
@@ -25,51 +116,44 @@ export default function InfoPage() {
           Info
         </h1>
 
-        {/* One column, left aligned, wide measure — as laid out in the reference. */}
-        <div className="mt-10 max-w-5xl space-y-16 sm:mt-14 sm:space-y-24">
-          {infoPhases.map((phase) => (
-            <section key={phase.title}>
+        {/* The three tracks the workflow is read for, as a row of plates across
+            the full measure. */}
+        <div className="mt-10 grid grid-cols-3 gap-4 sm:mt-14 sm:gap-6">
+          {infoTracks.map((track) => (
+            <div
+              key={track}
+              style={{ backgroundColor: TRACK }}
+              className="flex aspect-[719/997] items-center justify-center rounded-2xl p-3 text-center"
+            >
+              <span
+                className={`${anton.className} whitespace-pre-line text-[clamp(1rem,4vw,3.6rem)] uppercase leading-[1.28] text-white`}
+              >
+                {track}
+              </span>
+            </div>
+          ))}
+        </div>
+
+        {/* One panel for the whole workflow, as in the reference — the phases
+            run inside it rather than each carrying its own plate. */}
+        <div
+          style={{ backgroundColor: PANEL }}
+          className="mt-3 rounded-3xl p-6 sm:mt-4 sm:p-9"
+        >
+          {infoPhases.map((phase, i) => (
+            <section key={phase.title} className={i ? 'mt-10' : ''}>
               <h2
-                className={`${bebas.className} text-[clamp(1.5rem,3.4vw,2.25rem)] uppercase leading-tight tracking-[0.14em] text-white`}
+                // Not `leading-none`: the reference only ever sets these on one
+                // line, but a phone wraps them, and Anton's accents would then
+                // sit in the line above.
+                className={`${anton.className} text-[clamp(1.35rem,3.7vw,3.3rem)] uppercase leading-[1.1] tracking-[0.2em] text-white`}
               >
                 {phase.title}
               </h2>
 
-              <div className="mt-4 space-y-6">
-                {phase.blocks.map((block, i) => {
-                  const body = (
-                    <div className="space-y-1">
-                      {block.lines.map((line) => (
-                        <p key={line} className="font-light leading-snug text-white/50">
-                          {line}
-                        </p>
-                      ))}
-                    </div>
-                  );
-
-                  return (
-                    <div key={block.heading ?? i} className="text-lg sm:text-xl">
-                      {block.heading && (
-                        <p
-                          className={`${bebas.className} uppercase leading-snug tracking-[0.06em] text-white`}
-                        >
-                          {block.heading}
-                        </p>
-                      )}
-                      {block.href ? (
-                        <Link
-                          href={block.href}
-                          className="block transition-opacity hover:opacity-60"
-                        >
-                          {body}
-                        </Link>
-                      ) : (
-                        body
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
+              {phase.blocks.map((block, j) => (
+                <Block key={j} block={block} className={gapAbove(block, phase.blocks[j - 1])} />
+              ))}
             </section>
           ))}
         </div>

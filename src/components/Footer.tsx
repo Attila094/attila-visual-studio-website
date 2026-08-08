@@ -4,7 +4,14 @@ import { WORK_HREF } from '@/lib/anchors';
 
 const EMAIL = 'attilakovacs094@gmail.com';
 
-const socials = ['Youtube', 'Facebook', 'Instagram', 'Tiktok', 'LinkedIn'];
+/** `#` where there is no account to point at yet. */
+const socials = [
+  { label: 'Youtube', href: 'https://www.youtube.com/channel/UCJpSGpL6k7tRes6Bfcezazw' },
+  { label: 'Facebook', href: 'https://www.facebook.com/profile.php?id=61591438174457' },
+  { label: 'Instagram', href: 'https://www.instagram.com/attila_visual_studio/' },
+  { label: 'Tiktok', href: '#' },
+  { label: 'LinkedIn', href: '#' },
+];
 
 // Same order as the top bar, plus Contact — which lives in its own corner pill
 // up there but belongs in the list down here.
@@ -20,17 +27,23 @@ export function Footer() {
   return (
     <footer className="border-t border-white/15 text-white/80">
       <div className="mx-auto grid max-w-shell grid-cols-1 gap-10 px-5 py-14 sm:px-8 md:grid-cols-3 md:items-start md:gap-8">
-        {/* Bottom left — social links */}
-        <div className="flex flex-wrap gap-x-5 gap-y-2">
-          {socials.map((s) => (
-            <a
-              key={s}
-              href="#"
-              className="text-sm text-white/55 transition-colors hover:text-white"
-            >
-              {s}
-            </a>
-          ))}
+        {/* Bottom left — social links. All five stay on one line on a phone:
+            they are set smaller there and spread across the column, which is
+            what keeps them off a second row at 320px. */}
+        <div className="flex flex-nowrap justify-between gap-x-2 sm:flex-wrap sm:justify-start sm:gap-x-5 sm:gap-y-2">
+          {socials.map((s) => {
+            const external = s.href.startsWith('http');
+            return (
+              <a
+                key={s.label}
+                href={s.href}
+                {...(external ? { target: '_blank', rel: 'noreferrer noopener' } : {})}
+                className="whitespace-nowrap text-xs text-white/55 transition-colors hover:text-white sm:text-sm"
+              >
+                {s.label}
+              </a>
+            );
+          })}
         </div>
 
         {/* Bottom center — two lists side by side */}
