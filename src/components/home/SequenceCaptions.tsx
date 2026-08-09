@@ -3,22 +3,30 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Montserrat } from 'next/font/google';
 import { motion, useMotionValue, useTransform, type MotionValue } from 'framer-motion';
-import { captionGroups, captionLines, linesBefore } from '@/content/sequenceCaptions';
+import { captionColor, captionGroups, captionLines, linesBefore } from '@/content/sequenceCaptions';
 import { markCaptionTyped, typedCaptions } from '@/lib/introPlayed';
-import { CAPTION_DWELL_MS, TYPE_MS } from './HeroImageSequence';
+import {
+  CAPTION_DWELL_MS,
+  DWELL_MS,
+  FADE_OUT_MS,
+  PARK_FADE_MS,
+  TYPE_MS,
+} from '@/lib/sequenceTiming';
 
 const montserrat = Montserrat({ subsets: ['latin', 'latin-ext'], weight: '800' });
 
-/** How long the newest line stays at full strength once it has finished. */
-const DWELL_MS = 1000;
 /** What every earlier line settles to — present, but behind the photograph. */
 const PARKED_OPACITY = 0.1;
-/** The stack leaves over this, once the sequence is done with it. */
-const FADE_OUT_MS = 2000;
 
 /** Share of its own row a line is allowed to fill, so seven of them can stand
  *  from the top of the image to the bottom without touching. */
 const ROW_FILL = 0.78;
+/** …and half again on top of that. The row is what binds the size at any
+ *  ordinary window — the two width ceilings below sit well clear of it — and a
+ *  row's share is of the em BOX, most of which is the air above and below the
+ *  caps rather than ink. At 0.78 the letters stood under half the row high; at
+ *  1.5x they take about seven tenths of it and still clear each other. */
+const HEIGHT_SCALE = 1.5;
 /** Share of the image's width the longest line is allowed, leaving it air. */
 const WIDTH_FILL = 0.94;
 /** Set at twice what the image alone would allow, so the longer lines run out
@@ -121,7 +129,7 @@ export function SequenceCaptions({
         Math.min(
           (w * WIDTH_FILL * SIZE_SCALE) / em,
           (vw * SCREEN_FILL) / em,
-          ((h / ROWS) * ROW_FILL) / 1.15,
+          ((h / ROWS) * ROW_FILL * HEIGHT_SCALE) / 1.15,
         ),
       );
     },
@@ -243,8 +251,12 @@ export function SequenceCaptions({
               style={{
                 fontSize,
                 opacity: row === full ? 1 : PARKED_OPACITY,
+                color: captionColor(captionLines[row]),
+                // Inline rather than a utility class so the pause that waits
+                // for this fade is counting the same number it runs for.
+                transition: `opacity ${PARK_FADE_MS}ms`,
               }}
-              className={`${montserrat.className} m-0 whitespace-nowrap text-center uppercase leading-none tracking-[0.02em] text-white transition-opacity duration-500`}
+              className={`${montserrat.className} m-0 whitespace-nowrap text-center uppercase leading-none tracking-[0.02em]`}
             >
               {text || ' '}
             </motion.p>

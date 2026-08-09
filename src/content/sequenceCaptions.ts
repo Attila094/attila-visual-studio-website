@@ -20,6 +20,26 @@ export const captionGroups: readonly (readonly string[])[] = [
 /** Every line, in order — what the finished stack reads as. */
 export const captionLines: string[] = captionGroups.flatMap((g) => [...g]);
 
+/**
+ * Lines that are not plain white.
+ *
+ * Keyed by the line itself rather than by its row, so the colour travels with
+ * the word and cannot drift onto its neighbour the next time the list is
+ * re-ordered. The lookup is exact — "Építészet" does not colour
+ * "Belsőépítészet".
+ */
+const captionColors: Record<string, string> = {
+  // 20% grey, read as printers read it: a fifth of the way from white to
+  // black, so the word sets a shade softer than the rest of the stack. It
+  // multiplies with the line's opacity, which is what actually holds the
+  // parked lines back.
+  Építészet: '#cccccc',
+};
+
+export function captionColor(line: string): string {
+  return captionColors[line] ?? '#ffffff';
+}
+
 /** How many lines precede group `i`, so a line's place in the stack can be
  *  found from the image it belongs to. */
 export function linesBefore(group: number): number {

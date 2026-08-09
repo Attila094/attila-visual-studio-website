@@ -10,6 +10,7 @@ import { logoDockEnd, selectedTile } from '@/lib/heroSequenceState';
 import { introAlreadyPlayed } from '@/lib/introPlayed';
 import { WORK_HASH } from '@/lib/anchors';
 import { useHeldViewportHeight } from '@/lib/useHeldViewportHeight';
+import { BEFORE_NEXT_MS, GROW_MS, holdMsFor } from '@/lib/sequenceTiming';
 import { SequenceCaptions } from './SequenceCaptions';
 
 const bebas = Bebas_Neue({ subsets: ['latin', 'latin-ext'], weight: '400' });
@@ -81,19 +82,10 @@ const TILES_MARGIN = 16;
 export const RUNWAY_VH = 3;
 /** Progress at which the first image takes over from the bouncing ball. */
 const BALL_HANDOFF = 0.005;
-/** A caption line's type-in, and the beat it stands at full strength before the
- *  next one starts under it. */
-export const TYPE_MS = 3000;
-export const CAPTION_DWELL_MS = 1000;
 
-/**
- * How long the page pauses at image `i` — long enough for every line that image
- * carries to type itself in, with the beat between a pair, and a moment over so
- * the last one can be read before the page moves on.
- */
+/** How long the page pauses at image `i`, from the lines that image carries. */
 function holdFor(i: number): number {
-  const lines = captionGroups[i]?.length ?? 1;
-  return lines * TYPE_MS + (lines - 1) * CAPTION_DWELL_MS + 200;
+  return holdMsFor(captionGroups[i]?.length ?? 1);
 }
 /** Once landed, each image settles from 100% to 95% of its tile. */
 const FINAL_SCALE = 0.95;
@@ -119,24 +111,71 @@ const PARKED_OPACITY = 0.25;
 /** How long a two-faced slot takes to turn over. */
 const FLIP_MS = 900;
 
+/**
+ * A silent clip standing in for a still.
+ *
+ * It does NOT autoplay. A slot spends the first part of its life as a thumbnail
+ * the size of a fingernail, and a clip left running through that is half over
+ * by the time the slot is big enough to watch — so it is held at its first
+ * frame and started by `playing`, which the slot turns on at full size. Held at
+ * the first frame rather than paused wherever it happened to be, so it always
+ * begins at the beginning.
+ */
+function SlotVideo({
+  src,
+  poster,
+  alt,
+  playing,
+}: {
+  src: string;
+  poster?: string;
+  alt: string;
+  playing: boolean;
+}) {
+  const ref = useRef<HTMLVideoElement>(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    if (playing) {
+      // Muted is what makes this allowed at all without a click; a rejected
+      // play is nothing worth breaking the page over — the poster stands in.
+      void el.play().catch(() => {});
+    } else {
+      el.pause();
+      el.currentTime = 0;
+    }
+  }, [playing]);
+
+  return (
+    <video
+      ref={ref}
+      src={src}
+      poster={poster}
+      muted
+      loop
+      playsInline
+      preload="auto"
+      aria-label={alt}
+      className="absolute inset-0 h-full w-full object-cover"
+    />
+  );
+}
+
 /** One face of a slot: a still, or a silent clip played in its place. */
-function SlotFace({ src, poster, alt }: { src: string; poster?: string; alt: string }) {
+function SlotFace({
+  src,
+  poster,
+  alt,
+  playing = false,
+}: {
+  src: string;
+  poster?: string;
+  alt: string;
+  /** Only meaningful for a clip: true once the slot is at full size. */
+  playing?: boolean;
+}) {
   if (/\.mp4$/i.test(src)) {
-    return (
-      <video
-        src={src}
-        poster={poster}
-        // It has to start on its own, so it is muted — the only way a browser
-        // will allow that — and it loops, because the slot outlives the clip.
-        autoPlay
-        muted
-        loop
-        playsInline
-        preload="auto"
-        aria-label={alt}
-        className="absolute inset-0 h-full w-full object-cover"
-      />
-    );
+    return <SlotVideo src={src} poster={poster} alt={alt} playing={playing} />;
   }
   return (
     // eslint-disable-next-line @next/next/no-img-element
@@ -149,6 +188,12 @@ function SlotFace({ src, poster, alt }: { src: string; poster?: string; alt: str
       className="absolute inset-0 h-full w-full object-cover"
     />
   );
+}
+
+/** Which of the six windows between phase boundaries progress `p` falls in. */
+function segmentAt(p: number): number {
+  for (let i = 0; i < P.length - 2; i += 1) if (p < P[i + 1]) return i;
+  return P.length - 2;
 }
 
 /** Smoothstep — takes the linear scroll edge off every interpolation. */
@@ -285,6 +330,11 @@ export function HeroImageSequence() {
   // `eff` is last frame's progress, kept only to spot a hold being crossed;
   // `nextHold` never goes back, which is what makes the pauses one-shot;
   // `lockY` is the scroll position the page is pinned to during a hold.
+  // `auto` is the first visit's self-playing run: 'idle' until the logo has
+  // docked, 'running' while the page is carrying itself, 'off' for good once it
+  // reaches the tiles or the visitor asks for something else. `segIndex` is the
+  // pair of phase boundaries it is currently crossing and `segStart` when that
+  // crossing began.
   const run = useRef({
     eff: 0,
     holdUntil: 0,
@@ -294,6 +344,9 @@ export function HeroImageSequence() {
     caption: -1,
     finishing: false,
     finalEff: 1,
+    auto: 'idle' as 'idle' | 'running' | 'off',
+    segIndex: 0,
+    segStart: 0,
   });
 
   // The height everything here is measured against, held still while a phone
@@ -308,7 +361,15 @@ export function HeroImageSequence() {
     // The pause exists to give the caption's type-in room to play. On a repeat
     // load there is no type-in left, so there is nothing to wait for and the
     // sequence scrubs freely. Read once, on the client, where storage exists.
-    const holdMs = introAlreadyPlayed() ? 0 : 1;
+    const firstVisit = !introAlreadyPlayed();
+    const holdMs = firstVisit ? 1 : 0;
+    // …and on that first visit the sequence plays ITSELF, from the moment the
+    // logo docks through to the tile row: the visitor's scroll starts it and
+    // the page takes over from there. Only then. A repeat visit has seen it and
+    // is owed its scrollbar back, and someone who has asked for less movement
+    // is owed it more — the sequence still scrubs by hand for both.
+    const autoplays =
+      firstVisit && !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
     const update = () => {
       raf = 0;
@@ -434,6 +495,13 @@ export function HeroImageSequence() {
       if (s.nextHold < HOLD_POINTS.length && window.location.hash === WORK_HASH) {
         s.nextHold = HOLD_POINTS.length;
         s.holdUntil = 0;
+        // Landing past the sequence means it is over before it began, so the
+        // captions are already finished — without this they would hang over the
+        // tile row and the footer for as long as the page was open.
+        s.finalEff = FINAL_START;
+        // And whatever brought them here — a WORK link clicked mid-run — asked
+        // to be at the tiles, not to watch the sequence get there.
+        s.auto = 'off';
       }
 
       if (now < s.holdUntil) {
@@ -442,8 +510,52 @@ export function HeroImageSequence() {
         // choreography while the images stood still. Pinning also means a hold
         // costs no scroll at all, which keeps the mapping below honest.
         if (window.scrollY !== s.lockY) window.scrollTo(0, s.lockY);
+        // The next stretch of movement is timed from when the pause ENDS, so
+        // its clock stays at zero for as long as this one lasts.
+        s.segStart = now;
       } else {
-        const y = window.scrollY;
+        let y = window.scrollY;
+
+        // --- Autoplay ------------------------------------------------------
+        // The page moves itself between the pauses, a fixed GROW_MS from one
+        // phase boundary to the next, by scrolling: progress is a function of
+        // the scroll position, so driving the scroll drives everything —
+        // images, parked row, captions, and the runway actually being spent,
+        // which is what leaves the visitor at the tile row rather than back at
+        // the top with a page still to scroll.
+        if (autoplays && s.auto !== 'off') {
+          if (s.auto === 'idle' && docked && y > 0) {
+            s.auto = 'running';
+            const p0 = Math.min(1, Math.max(0, y / end));
+            s.segIndex = segmentAt(p0);
+            // Picked up from wherever the visitor's own scroll reached, not
+            // from the start of that window — otherwise the page would jerk
+            // backwards at the very moment it took over.
+            const from = P[s.segIndex];
+            const to = P[s.segIndex + 1];
+            s.segStart = now - ((p0 - from) / (to - from)) * GROW_MS;
+          }
+          if (s.auto === 'running') {
+            const from = P[s.segIndex];
+            const to = P[s.segIndex + 1];
+            const t = Math.min(1, (now - s.segStart) / GROW_MS);
+            // Linear in time. The easing belongs to `rectFor`, which already
+            // smoothsteps every window it interpolates; easing here as well
+            // would apply it twice and stall each image at both ends.
+            y = Math.round(end * lerp(from, to, t));
+            if (window.scrollY !== y) window.scrollTo(0, y);
+            if (t >= 1) {
+              if (s.segIndex < P.length - 2) {
+                s.segIndex += 1;
+                s.segStart = now;
+              } else {
+                // Home. The tiles are on screen and the page is the
+                // visitor's again.
+                s.auto = 'off';
+              }
+            }
+          }
+        }
         // Progress IS the scroll position. Because it's a pure function of `y`,
         // scrolling up walks the images backwards and scrolling down resumes
         // from precisely the same frame — no accumulated error either way.
@@ -464,8 +576,15 @@ export function HeroImageSequence() {
             s.lockY = y;
             s.nextHold += 1;
             // Where the last hold caught the page. The final shrink is any
-            // progress past this, which is what the captions leave on.
-            if (s.nextHold === HOLD_POINTS.length) s.finalEff = p;
+            // progress past this, which is what the captions leave on. Never
+            // past FINAL_START, though: a page opened already scrolled beyond
+            // the sequence fires all five holds on one frame with `p` at the
+            // very end, and recording that as the mark would set a finish line
+            // the scroll can never cross — leaving the captions on screen for
+            // good. Clamped, that case reads as finished immediately, which it
+            // is. In a scroll through the sequence the fifth hold lands on
+            // FINAL_START anyway, so the clamp changes nothing.
+            if (s.nextHold === HOLD_POINTS.length) s.finalEff = Math.min(p, FINAL_START);
           }
         }
         s.eff = p;
@@ -522,29 +641,40 @@ export function HeroImageSequence() {
           }
         }
       }
+
+      // Keep the loop alive whenever the sequence is driving rather than being
+      // driven. Both a pause and an autoplay stretch are periods in which the
+      // page does not move under anybody's hand — no scroll events, so nothing
+      // to schedule the next frame — and the sequence would stop dead at the
+      // first pause and never wake up to find it over.
+      if (!raf && (performance.now() < s.holdUntil || s.auto === 'running')) {
+        raf = requestAnimationFrame(update);
+      }
     };
 
     const onScroll = () => {
       if (!raf) raf = requestAnimationFrame(update);
     };
 
-    // Swallow the input itself during a hold, so the browser never starts a
+    // Swallow the input itself while the sequence is driving — during a pause,
+    // and for the whole of an autoplay run — so the browser never starts a
     // scroll we would have to snap back from (that fight is what reads as jank).
-    const blockDuringHold = (e: Event) => {
-      if (performance.now() < run.current.holdUntil) e.preventDefault();
+    const blockWhileDriven = (e: Event) => {
+      const s = run.current;
+      if (performance.now() < s.holdUntil || s.auto === 'running') e.preventDefault();
     };
 
     update();
     window.addEventListener('scroll', onScroll, { passive: true });
     window.addEventListener('resize', update);
-    window.addEventListener('wheel', blockDuringHold, { passive: false });
-    window.addEventListener('touchmove', blockDuringHold, { passive: false });
+    window.addEventListener('wheel', blockWhileDriven, { passive: false });
+    window.addEventListener('touchmove', blockWhileDriven, { passive: false });
     return () => {
       if (raf) cancelAnimationFrame(raf);
       window.removeEventListener('scroll', onScroll);
       window.removeEventListener('resize', update);
-      window.removeEventListener('wheel', blockDuringHold);
-      window.removeEventListener('touchmove', blockDuringHold);
+      window.removeEventListener('wheel', blockWhileDriven);
+      window.removeEventListener('touchmove', blockWhileDriven);
     };
   }, [progress, geoTick, bigTop, bigLeft, bigW, bigH]);
 
@@ -645,6 +775,21 @@ function SequenceImage({
     return shown * lerp(dimmed, 1, ease(seg(p, FINAL_START, 1)));
   });
 
+  // A clip runs only while its slot is at full size: from the frame the growth
+  // finishes — which is also where the sequence pauses, so it plays under its
+  // own caption — until the slot has shrunk away again. By then the pair has
+  // turned over to its second face and the clip is behind it, playing to
+  // nobody. State rather than a transform because it drives an imperative
+  // play/pause, and it only changes twice in the whole sequence.
+  const hasClip = /\.mp4$/i.test(image.src);
+  const [playing, setPlaying] = useState(false);
+  useEffect(() => {
+    if (!hasClip) return;
+    const check = (p: number) => setPlaying(p >= P[index + 1] && p < P[index + 2]);
+    check(progress.get());
+    return progress.on('change', check);
+  }, [hasClip, index, progress]);
+
   const isSelected = landed && selectedId === tile.id;
   const isOther = landed && selectedId !== null && !isSelected;
   // The settle to 90% and the selection response are the same transform, so
@@ -700,7 +845,12 @@ function SequenceImage({
             style={{ transformStyle: 'preserve-3d' }}
           >
             <span className="absolute inset-0 block [backface-visibility:hidden]">
-              <SlotFace src={image.src} poster={image.poster} alt={image.alt} />
+              <SlotFace
+                src={image.src}
+                poster={image.poster}
+                alt={image.alt}
+                playing={playing}
+              />
             </span>
             {image.back && (
               <span
