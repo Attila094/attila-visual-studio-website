@@ -13,3 +13,14 @@ import { motionValue } from 'framer-motion';
  * which projects gallery to open underneath.
  */
 export const selectedTile = motionValue<string | null>(null);
+
+/**
+ * The scroll position at which the hero logo finishes docking into the top bar,
+ * published by <HeroExperience> because only it knows the measurement.
+ *
+ * The sequence waits for it before typing its first caption — a line landing
+ * letter by letter while the logo is still travelling reads as two animations
+ * fighting for the same moment. Zero until measured, which fails open: a page
+ * without the hero simply has nothing to wait for.
+ */
+export const logoDockEnd = motionValue(0);

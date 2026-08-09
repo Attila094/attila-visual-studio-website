@@ -28,13 +28,9 @@ export default function ContactPage() {
         Contact
       </h1>
 
-      <div className="flex flex-1 items-center py-10 sm:py-14">
-        <ContactTiles email={EMAIL} />
-      </div>
-
-      {/* Address / phone / email — one horizontal row, sitting just above the
-          footer at the end of the page. */}
-      <dl className="grid grid-cols-1 gap-8 sm:grid-cols-3">
+      {/* Address / phone / email — one horizontal row, directly under the
+          title, so the way to reach the studio is read before the tiles. */}
+      <dl className="mt-8 grid grid-cols-1 gap-8 sm:grid-cols-3">
         {details.map((d) => (
           <div key={d.label}>
             <dt className="text-xs uppercase tracking-[0.15em] text-white/45">{d.label}</dt>
@@ -46,6 +42,10 @@ export default function ContactPage() {
           </div>
         ))}
       </dl>
+
+      <div className="flex flex-1 items-center py-10 sm:py-14">
+        <ContactTiles email={EMAIL} />
+      </div>
     </section>
   );
 }

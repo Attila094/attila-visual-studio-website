@@ -3,6 +3,10 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { Anton, Caveat, Poppins } from 'next/font/google';
 import { PAGE_TITLE_CLASS, PAGE_TITLE_STYLE, PAGE_TOP_PAD } from '@/components/pageTitle';
+import { GLASS_RING, GLASS_STYLE } from '@/components/glass';
+import { RevealLines } from '@/components/about/RevealLines';
+import { SwapHeading } from '@/components/about/SwapHeading';
+import { TypedQuote } from '@/components/about/TypedQuote';
 import { WORK_HREF } from '@/lib/anchors';
 
 /** Heavy condensed display for the ghosted name, the role line, the essay's
@@ -19,11 +23,9 @@ const GHOST = '#1e1e1e';
  *  are both expressed in ems of it. */
 const GHOST_SIZE = 'clamp(4rem, 25.5vw, 22rem)';
 
-/** Sampled straight out of `aboutpage.jpg`: the fact cards' plate, and the two
- *  button greys — the quiet pair against CONTACT's lighter one. */
+/** Sampled straight out of `aboutpage.jpg`: the fact cards' plate. The buttons
+ *  no longer carry a colour of their own — they are glass. */
 const CARD = '#1a1a1a';
-const BUTTON = '#333333';
-const BUTTON_ACCENT = '#666666';
 
 /**
  * A line in a fact card. A pair sets its second half on its own line, hung
@@ -32,10 +34,16 @@ const BUTTON_ACCENT = '#666666';
  */
 type CardLine = string | readonly [string, string];
 
-const CARDS: { title: string; lines: readonly CardLine[] }[] = [
+const CARDS: { title: string; lines: readonly CardLine[]; fit?: boolean }[] = [
   {
     title: 'Végzettség',
-    lines: ['PTE Mérnöki és Informatikai Kar /Bsc/', 'PTE Mérnöki és Informatikai Kar /Msc/'],
+    // `fit`: these two run long, and each is one thought — so the card sizes
+    // its own copy to hold them on a line apiece rather than breaking them.
+    fit: true,
+    lines: [
+      'PTE Mérnöki és Informatikai Kar /Bsc/ - építészmérnök',
+      'PTE Mérnöki és Informatikai Kar /Msc/ - tervező építész',
+    ],
   },
   {
     title: 'Tapasztalat',
@@ -122,8 +130,7 @@ export default function AboutPage() {
               }}
               className={`${script.className} absolute left-[9%] z-20 max-w-[52%] text-[clamp(0.9rem,1.95vw,1.6rem)] leading-none text-white`}
             >
-              &ldquo;Alkotás és értékteremtés, építészet és vizualizáció
-              segítségével…&rdquo;
+              <TypedQuote />
             </p>
           </div>
 
@@ -158,7 +165,11 @@ export default function AboutPage() {
             <section
               key={card.title}
               style={{ backgroundColor: CARD }}
-              className="rounded-2xl p-6 md:min-h-[18.5rem]"
+              // A `fit` card is its own container, so its copy can be sized
+              // against the plate it sits on rather than against the window.
+              className={`rounded-2xl p-6 md:min-h-[18.5rem] ${
+                card.fit ? '[container-type:inline-size]' : ''
+              }`}
             >
               <h2
                 className={`${geo.className} text-[clamp(1.05rem,2.15vw,1.95rem)] font-bold uppercase leading-none tracking-[0.24em] text-white/65`}
@@ -167,7 +178,19 @@ export default function AboutPage() {
               </h2>
 
               <div
-                className={`${geo.className} mt-6 text-[clamp(0.85rem,1.2vw,1.1rem)] font-light leading-[1.3] text-white/55`}
+                // 3.7cqw is the longest line measured against the plate's own
+                // width: at 16px it sets 426px wide inside a 411px column, so
+                // 100cqw × 16/426 holds it — a shade under, for slack. Capped
+                // above at the other cards' size, and floored at 0.8rem: three
+                // columns on a 768px window leave 174px a card, where a fit
+                // would be 6px type. No `nowrap` on purpose — the size alone
+                // keeps each entry on one line, so when the floor takes over
+                // the line simply wraps instead of running off the plate.
+                className={`${geo.className} mt-6 font-light leading-[1.3] text-white/55 ${
+                  card.fit
+                    ? 'text-[max(0.8rem,min(1.1rem,3.7cqw))]'
+                    : 'text-[clamp(0.85rem,1.2vw,1.1rem)]'
+                }`}
               >
                 {card.lines.map((line) => {
                   const [head, hung] = typeof line === 'string' ? [line, null] : line;
@@ -185,13 +208,12 @@ export default function AboutPage() {
           ))}
         </div>
 
-        {/* The essay. Justified and full width, under a condensed heading. */}
-        <h2
+        {/* The essay. Justified and full width, under a condensed heading whose
+            two adjectives trade places every ten seconds. */}
+        <SwapHeading
           className={`${anton.className} mt-8 text-[clamp(1.15rem,1.75vw,1.6rem)] leading-tight text-white`}
-        >
-          Mérnöki és művészi látásmód együttesen
-        </h2>
-        <div
+        />
+        <RevealLines
           // Justified from `sm` up only: at a phone's measure the same setting
           // opens rivers of white space between the words.
           className={`${geo.className} mt-5 text-[clamp(0.85rem,1.2vw,1.1rem)] font-light leading-[1.3] text-white/75 sm:text-justify`}
@@ -209,7 +231,7 @@ export default function AboutPage() {
             tervezési folyamatokat a kezdeti koncepciótól fotorealisztikus prezentációig, teljes körű
             szolgáltatást tudok nyújtani az ügyefeleim részére.
           </p>
-        </div>
+        </RevealLines>
 
         {/* Three ways on. One cell each, so the pills sit on the mock's rhythm
             however wide their labels are. */}
@@ -219,10 +241,13 @@ export default function AboutPage() {
               key={button.href}
               href={button.href}
               style={{
-                backgroundColor: button.accent ? BUTTON_ACCENT : BUTTON,
-                color: button.accent ? '#ffffff' : '#0a0a0a',
+                ...GLASS_STYLE,
+                // CONTACT is the one being offered; the other two stand back at
+                // half strength, as the quiet pair did in the mock.
+                opacity: button.accent ? 1 : 0.5,
+                color: button.accent ? '#ffffff' : '#c9c9c9',
               }}
-              className={`${anton.className} rounded-full px-4 py-3 text-center text-[clamp(0.85rem,1.9vw,1.7rem)] uppercase leading-none tracking-[0.01em] transition-opacity hover:opacity-80 sm:px-8 lg:px-12`}
+              className={`${anton.className} rounded-full px-4 py-3 text-center text-[clamp(0.85rem,1.9vw,1.7rem)] uppercase leading-none tracking-[0.01em] ${GLASS_RING} transition-opacity duration-300 hover:!opacity-100 sm:px-8 lg:px-12`}
             >
               {button.label}
             </Link>

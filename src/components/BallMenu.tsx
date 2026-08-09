@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { AnimatePresence, motion, useReducedMotion, type Easing } from 'framer-motion';
 import { useHeroReveal } from './home/HeroRevealContext';
+import { logoDockEnd } from '@/lib/heroSequenceState';
 import { WORK_HREF } from '@/lib/anchors';
 
 /** The bar on wide screens. CONTACT is not in here — it has its own corner
@@ -120,6 +121,20 @@ export function BallMenu() {
         scaleY: reduce ? { duration: 0.3 } : idleLoop,
       };
 
+  /**
+   * Pressing the ball takes the visitor to where the image sequence begins —
+   * the point the logo finishes docking, which is also the moment the first
+   * caption is allowed to type itself in. Published by <HeroExperience>; the
+   * 70%-of-a-viewport fallback is the same figure it measures, for the frame
+   * before it has.
+   */
+  const toSequence = () => {
+    const target = logoDockEnd.get() || window.innerHeight * 0.7;
+    // Rounded up, so the landing is past the dock rather than a fraction short
+    // of it — the sequence gates its first caption on exactly that line.
+    window.scrollTo({ top: Math.ceil(target), behavior: reduce ? 'auto' : 'smooth' });
+  };
+
   // Links fade in left-to-right once the bar appears on scroll.
   const itemDelay = (i: number) => (asMenu && isHome && !reduce ? 0.12 + i * 0.07 : 0);
   const barDelay = asMenu && isHome && !reduce ? 0.82 : 0;
@@ -128,9 +143,11 @@ export function BallMenu() {
   return (
     <>
       {isHome && (
-        <motion.div
-          aria-hidden
-          className="pointer-events-none fixed left-1/2 z-[70] rounded-full"
+        <motion.button
+          type="button"
+          aria-label="Tovább a képsorhoz"
+          onClick={toSequence}
+          className="fixed left-1/2 z-[70] cursor-pointer rounded-full border-0 p-0"
           initial={false}
           animate={ballAnimate}
           transition={ballTransition}
@@ -142,6 +159,9 @@ export function BallMenu() {
             backgroundColor: BALL_COLOR,
             transformOrigin: 'center bottom',
             willChange: 'transform',
+            // Only while it is the scroll cue; once it has handed over to the
+            // image sequence it is invisible and must not swallow clicks.
+            pointerEvents: asMenu ? 'none' : 'auto',
           }}
         />
       )}

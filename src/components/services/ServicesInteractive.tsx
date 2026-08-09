@@ -203,7 +203,9 @@ function ServicePanel({
       // Exactly its category's tile block, at every width. The column layout
       // is `md` and up only: below it the panel is a plain block, so the copy
       // and the images can outgrow the box and the fit test can see it.
-      className="pointer-events-auto h-full max-h-full w-full overflow-y-auto rounded-3xl p-5 md:flex md:flex-col md:p-7"
+      // `rounded-xl` is the card's own radius: the panel grows out of a tile,
+      // so a corner that changed shape mid-morph would give the trick away.
+      className="pointer-events-auto h-full max-h-full w-full overflow-y-auto rounded-xl p-5 md:flex md:flex-col md:p-7"
     >
       {/* Copy on the left, the artwork on the right. The image band is always
           the same width — 3.8fr against the text's 1fr, which is what the
@@ -219,7 +221,7 @@ function ServicePanel({
             {item.title ?? item.label}
           </h3>
           <p className={`${geo.className} mt-5 text-sm leading-relaxed text-white/55`}>
-            {service.blurb}
+            {item.blurb ?? service.blurb}
           </p>
         </div>
 
@@ -268,9 +270,20 @@ function ServicePanel({
       <div className="mt-4 flex justify-end">
         <Link
           href="/contact"
+          // Glass rather than a white slab: it takes its colour from whatever
+          // it is sitting over. The blur and the saturation bend that backdrop,
+          // the inset highlight is the lit top edge of a thick pane, the inset
+          // shadow is its far edge, and the drop shadow lifts it off the panel.
+          style={{
+            backdropFilter: 'blur(14px) saturate(180%)',
+            WebkitBackdropFilter: 'blur(14px) saturate(180%)',
+            boxShadow:
+              'inset 0 1px 0 rgba(255,255,255,0.45), inset 0 -1px 0 rgba(255,255,255,0.12), 0 10px 30px rgba(0,0,0,0.35)',
+          }}
           // 22% of the panel, as in the reference, so it lines up under the
-          // right-hand image at any width.
-          className={`${anton.className} min-w-[22%] rounded-xl bg-white px-10 py-1.5 text-center text-2xl uppercase leading-tight tracking-[0.01em] text-ink transition-opacity hover:opacity-80 sm:text-3xl`}
+          // right-hand image at any width. `rounded-3xl` is twice the card's
+          // 12px corner.
+          className={`${anton.className} min-w-[22%] rounded-3xl bg-white/15 px-10 py-1.5 text-center text-2xl uppercase leading-tight tracking-[0.01em] text-white ring-1 ring-inset ring-white/30 transition-colors duration-300 hover:bg-white/25 sm:text-3xl`}
         >
           Contact
         </Link>

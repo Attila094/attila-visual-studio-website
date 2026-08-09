@@ -7,9 +7,22 @@
  * a row of labelled plates.
  */
 
-/** The three tracks named across the top of the reference. The newline is the
- *  break it draws — at this plate width the line would otherwise just fit. */
-export const infoTracks = ['Látvány\ntervezés', 'Építészet', 'Fotózás'];
+/**
+ * The three tracks named across the top of the reference. The newline in a
+ * label is the break it draws — at this plate width the line would otherwise
+ * just fit. Each carries its plate's artwork, out of `Thumbnails - info`; it is
+ * heavily blurred behind the label, so it is served small.
+ */
+export interface InfoTrack {
+  label: string;
+  image: string;
+}
+
+export const infoTracks: InfoTrack[] = [
+  { label: 'Látvány\ntervezés', image: '/media/info/latvanytervezes.webp' },
+  { label: 'Építészet', image: '/media/info/epiteszet.webp' },
+  { label: 'Fotózás', image: '/media/info/fotozas.webp' },
+];
 
 /** Copy under an uppercase lead-in. `href` turns the paragraphs into a link. */
 export interface InfoTextBlock {
@@ -55,7 +68,12 @@ export const infoPhases: InfoPhase[] = [
       {
         kind: 'plates',
         size: 'sm',
-        items: ['CAD tervek', '3D modell', 'anyagok\ntextúrák', 'mobiliák', 'mood'],
+        items: [
+          'CAD tervek /\n3D modell',
+          'burkolatok, anyagok, textúrák, felületek',
+          'egyedi bútorok & mobiliák',
+          'mood',
+        ],
       },
       {
         kind: 'text',

@@ -1,27 +1,46 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { Bebas_Neue } from 'next/font/google';
-import { motion, type MotionValue } from 'framer-motion';
-import { mainTiles } from '@/content/mainTiles';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { Montserrat } from 'next/font/google';
+import { motion, useMotionValue, useTransform, type MotionValue } from 'framer-motion';
+import { captionGroups, captionLines, linesBefore } from '@/content/sequenceCaptions';
 import { markCaptionTyped, typedCaptions } from '@/lib/introPlayed';
-import { MOBILE_MAX, TYPE_MS } from './HeroImageSequence';
+import { CAPTION_DWELL_MS, TYPE_MS } from './HeroImageSequence';
 
-const bebas = Bebas_Neue({ subsets: ['latin', 'latin-ext'], weight: '400' });
+const montserrat = Montserrat({ subsets: ['latin', 'latin-ext'], weight: '800' });
 
-/** While the letters are landing, and once they have. */
-const TYPING_OPACITY = 0.6;
-const SETTLED_OPACITY = 0.1;
-/** On a phone the caption sits in its own band above the images instead of over
- *  them, so it holds one steady value rather than dimming once it has landed. */
-const MOBILE_OPACITY = 0.45;
+/** How long the newest line stays at full strength once it has finished. */
+const DWELL_MS = 1000;
+/** What every earlier line settles to — present, but behind the photograph. */
+const PARKED_OPACITY = 0.1;
+/** The stack leaves over this, once the sequence is done with it. */
+const FADE_OUT_MS = 2000;
 
-export const captionTexts = mainTiles.map((t) => t.title);
+/** Share of its own row a line is allowed to fill, so seven of them can stand
+ *  from the top of the image to the bottom without touching. */
+const ROW_FILL = 0.78;
+/** Share of the image's width the longest line is allowed, leaving it air. */
+const WIDTH_FILL = 0.94;
+/** Set at twice what the image alone would allow, so the longer lines run out
+ *  past its edges onto the black. Never past the window, though — see below. */
+const SIZE_SCALE = 3;
+/** Share of the window the longest line may take. This is the ceiling that
+ *  keeps the doubled type from running off a narrow screen. */
+const SCREEN_FILL = 0.96;
+const ROWS = captionLines.length;
+const LONGEST = captionLines.reduce((a, b) => (b.length > a.length ? b : a));
+/** The size the hidden probe below is set at — the measurement is divided back
+ *  out of it, so the number itself doesn't matter, only that it is large enough
+ *  to measure precisely. */
+const PROBE_PX = 100;
+/** Until the probe has been read: a rough width-per-character for Montserrat
+ *  Medium, only ever used for the first frame. */
+const FALLBACK_EM = LONGEST.length * 0.72;
 
 /**
- * Which captions have already typed themselves in.
+ * Which groups have already typed themselves in.
  *
- * Module-scoped rather than component state because the caption unmounts when
+ * Module-scoped rather than component state because the captions unmount when
  * the sequence is scrolled backwards, and state would forget — the type effect
  * would replay on the way back down. It is seeded from (and written through to)
  * sessionStorage, so the effect also doesn't replay on a reload: it plays the
@@ -35,115 +54,204 @@ function typedSet(): Set<number> {
 }
 
 /**
- * The caption for the image currently at full size — centred on the page, one
- * at a time. It types in over TYPE_MS at 60%, drops to 10% the moment the last
- * letter lands, then drops behind the stage and dissolves as its image shrinks.
- * On a phone it holds a flat 45% throughout instead of that 60→10 step.
+ * The sequence's captions — one growing list, set across the big image.
  *
- * The dissolve arrives as a motion value and is applied to the wrapper, so it
- * can follow the scroll every frame while the 60→10% step stays an ordinary
- * CSS transition on the text itself. The two multiply, as nested opacity does.
+ * Each image brings its own line, or its own pair: the second of a pair lands a
+ * beat after the first, on the row beneath it, and the first dims as it starts.
+ * Nothing is ever taken away, so by the last image all seven lines stand from
+ * the top edge of the image to the bottom. They leave together, over two
+ * seconds, once the sequence is finished with them.
+ *
+ * Rows are a fixed share of the image's height rather than a flowed column:
+ * a line therefore appears exactly where it will stay, and the finished stack
+ * spans the image precisely, whatever it is holding at the time.
  */
 export function SequenceCaptions({
   activeIndex,
-  front,
-  fade,
-  bandTop,
-  bandHeight,
+  slotTop,
+  slotLeft,
+  slotW,
+  slotH,
+  done,
+  onAdvance,
 }: {
-  /** The caption to show at the current scroll position; -1 before the first hold. */
+  /** The image whose caption group is current; -1 before the first hold. */
   activeIndex: number;
-  /** True while this caption belongs in front of the images. */
-  front: boolean;
-  /** 1 → fully present, 0 → dissolved away. */
-  fade: MotionValue<number>;
-  /** Top of the phone caption band — the bottom edge of the top bar. */
-  bandTop: MotionValue<number>;
-  /** Its height — down to the top edge of the big image. */
-  bandHeight: MotionValue<number>;
+  /** The big image's live rect — the stack is set across it. */
+  slotTop: MotionValue<number>;
+  slotLeft: MotionValue<number>;
+  slotW: MotionValue<number>;
+  slotH: MotionValue<number>;
+  /** True once the sequence has begun its last phase — the stack's cue to go. */
+  done: boolean;
+  /** Called when a group moves to its second line, which is also the moment its
+   *  image should turn over to the discipline that line names. */
+  onAdvance: (group: number) => void;
 }) {
-  // On a phone the caption goes ABOVE the images rather than across them: the
-  // wrapper IS the band between the top bar and the images, and the text is
-  // centred in it on both axes.
-  const [mobile, setMobile] = useState(false);
-  useEffect(() => {
-    const mq = window.matchMedia(`(max-width: ${MOBILE_MAX - 1}px)`);
-    const sync = () => setMobile(mq.matches);
-    sync();
-    mq.addEventListener('change', sync);
-    return () => mq.removeEventListener('change', sync);
-  }, []);
-  // The typing state carries the caption it belongs to, so a stale count can
-  // never be painted against a new caption's text. When `activeIndex` moves,
-  // this render already knows the state is for the previous one and derives
-  // the right starting point instead of waiting for the effect below to
-  // correct it — an effect runs AFTER paint, so that correction would arrive
-  // one frame too late and flash the whole next caption on screen.
-  const [typed, setTyped] = useState({ i: -1, n: 0, typing: false });
-  const current = typed.i === activeIndex;
-  const seenBefore = activeIndex >= 0 && typedSet().has(activeIndex);
-  const count = current ? typed.n : seenBefore ? captionTexts[activeIndex].length : 0;
-  const typing = current ? typed.typing : !seenBefore;
+  // How wide the longest line actually sets, in ems of its own size. Measured
+  // rather than estimated: a character-width constant is a guess about a font
+  // whose metrics only the browser knows, and getting it wrong either overflows
+  // the image or leaves the type needlessly small. Re-read once the webfont has
+  // loaded, since the first measurement is of the fallback face.
+  const longestEm = useMotionValue(FALLBACK_EM);
+  const probe = useRef<HTMLSpanElement>(null);
+  useLayoutEffect(() => {
+    const el = probe.current;
+    if (!el) return;
+    const measure = () => {
+      const w = el.getBoundingClientRect().width;
+      if (w > 0) longestEm.set(w / PROBE_PX);
+    };
+    measure();
+    document.fonts?.ready.then(measure).catch(() => {});
+  }, [longestEm]);
+
+  /**
+   * Twice what the image's own width would allow — so the longer lines break
+   * out over the black either side — held under two ceilings: the window, which
+   * it must never overflow, and its own row, which it must never outgrow or the
+   * seven lines would collide.
+   */
+  const fontSize = useTransform(
+    [slotLeft, slotW, slotH, longestEm],
+    ([l, w, h, em]: number[]) => {
+      const vw = 2 * l + w; // the slot is centred, so this is the window
+      return Math.max(
+        9,
+        Math.min(
+          (w * WIDTH_FILL * SIZE_SCALE) / em,
+          (vw * SCREEN_FILL) / em,
+          ((h / ROWS) * ROW_FILL) / 1.15,
+        ),
+      );
+    },
+  );
+  const rowHeight = useTransform(slotH, (h) => h / ROWS);
+
+  /**
+   * `started` — how many of the current group's lines have begun; `n` — how far
+   * the newest is typed. Carrying the group with them means a stale count can
+   * never be painted against a new group's text.
+   */
+  const [shown, setShown] = useState({ group: -1, started: 0, n: 0 });
+  /** The one line at full strength, as a global row index. -1 once its beat is
+   *  over and every line is equal again. */
+  const [full, setFull] = useState(-1);
 
   useEffect(() => {
     if (activeIndex < 0) return;
-    const text = captionTexts[activeIndex];
+    const group = captionGroups[activeIndex];
+    const base = linesBefore(activeIndex);
+
     if (typedSet().has(activeIndex)) {
-      setTyped({ i: activeIndex, n: text.length, typing: false });
+      // Been here before: the group belongs on screen whole, with no replay —
+      // and so does the turned-over face of its image.
+      setShown({ group: activeIndex, started: group.length, n: group[group.length - 1].length });
+      setFull(-1);
+      if (group.length > 1) onAdvance(activeIndex);
       return;
     }
     // Claim it up front, so a quick scroll back and forth mid-type doesn't
     // start the animation over — and persist it, so a reload doesn't either.
     typedSet().add(activeIndex);
     markCaptionTyped(activeIndex);
-    setTyped({ i: activeIndex, n: 0, typing: true });
+
     let raf = 0;
-    const start = performance.now();
-    const tick = () => {
-      const t = Math.min(1, (performance.now() - start) / TYPE_MS);
-      const n = Math.round(t * text.length);
-      const stillTyping = t < 1;
-      // Returning `prev` unchanged lets React bail out, so the ~60 ticks a
-      // second only cost a render on the frames a letter actually lands.
-      setTyped((prev) =>
-        prev.i === activeIndex && prev.n === n && prev.typing === stillTyping
-          ? prev
-          : { i: activeIndex, n, typing: stillTyping },
-      );
-      if (stillTyping) raf = requestAnimationFrame(tick);
+    const timers: number[] = [];
+
+    const typeLine = (li: number) => {
+      const text = group[li];
+      // The new line takes the light; everything above it dims to the stack.
+      setFull(base + li);
+      setShown({ group: activeIndex, started: li + 1, n: 0 });
+      // The line above is starting to fade — that is the beat the image turns
+      // over on, so the picture changes with the word rather than after it.
+      if (li > 0) onAdvance(activeIndex);
+      const start = performance.now();
+      const tick = () => {
+        const t = Math.min(1, (performance.now() - start) / TYPE_MS);
+        const n = Math.round(t * text.length);
+        // Returning `prev` unchanged lets React bail out, so the ~60 ticks a
+        // second only cost a render on the frames a letter actually lands.
+        setShown((prev) =>
+          prev.group === activeIndex && prev.started === li + 1 && prev.n === n
+            ? prev
+            : { group: activeIndex, started: li + 1, n },
+        );
+        if (t < 1) {
+          raf = requestAnimationFrame(tick);
+        } else if (li + 1 < group.length) {
+          timers.push(window.setTimeout(() => typeLine(li + 1), CAPTION_DWELL_MS));
+        } else {
+          timers.push(window.setTimeout(() => setFull(-1), DWELL_MS));
+        }
+      };
+      raf = requestAnimationFrame(tick);
     };
-    raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
+
+    typeLine(0);
+    return () => {
+      cancelAnimationFrame(raf);
+      timers.forEach((id) => clearTimeout(id));
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- onAdvance is stable
   }, [activeIndex]);
 
   if (activeIndex < 0) return null;
 
+  // Every line up to and including the newest one that has begun. A scroll back
+  // shortens the list; the rows the remaining lines sit on never move.
+  const base = linesBefore(activeIndex);
+  const started = shown.group === activeIndex ? shown.started : captionGroups[activeIndex].length;
+  const visibleRows = base + started;
+
   return (
+    <>
+      {/* Off-screen, at a known size, in the same face and tracking as the
+          lines: what the type size is solved from. */}
+      <span
+        ref={probe}
+        aria-hidden
+        style={{ position: 'fixed', left: -99999, top: 0, fontSize: PROBE_PX }}
+        className={`${montserrat.className} whitespace-nowrap uppercase leading-none tracking-[0.02em]`}
+      >
+        {LONGEST}
+      </span>
+
     <motion.div
       aria-hidden
       style={{
-        opacity: fade,
-        top: mobile ? bandTop : undefined,
-        height: mobile ? bandHeight : undefined,
+        top: slotTop,
+        left: slotLeft,
+        width: slotW,
+        height: slotH,
+        opacity: done ? 0 : 1,
+        transition: `opacity ${FADE_OUT_MS}ms ease-out`,
       }}
-      className={`pointer-events-none fixed flex items-center justify-center px-6 ${
-        front ? 'z-50' : 'z-20'
-      } ${mobile ? 'inset-x-0' : 'inset-0'}`}
+      className="pointer-events-none fixed z-40 flex flex-col"
     >
-      <p
-        style={{
-          opacity: mobile ? MOBILE_OPACITY : typing ? TYPING_OPACITY : SETTLED_OPACITY,
-        }}
-        className={`${bebas.className} w-full max-w-[110rem] text-center uppercase leading-[0.9] tracking-[0.08em] text-white transition-opacity duration-500 ${
-          // Above the images there is only the band between the top bar and the
-          // photograph, so the phone size is capped to what that band can hold.
-          mobile
-            ? 'text-[clamp(1.75rem,9vw,3.5rem)]'
-            : 'text-[clamp(3rem,16.5vw,14.0625rem)]'
-        }`}
-      >
-        {captionTexts[activeIndex].slice(0, count) || ' '}
-      </p>
+      {Array.from({ length: visibleRows }, (_, row) => {
+        const typing = row === base + started - 1 && shown.group === activeIndex;
+        const text = typing ? captionLines[row].slice(0, shown.n) : captionLines[row];
+        return (
+          <motion.div
+            key={row}
+            style={{ height: rowHeight }}
+            className="flex items-center justify-center"
+          >
+            <motion.p
+              style={{
+                fontSize,
+                opacity: row === full ? 1 : PARKED_OPACITY,
+              }}
+              className={`${montserrat.className} m-0 whitespace-nowrap text-center uppercase leading-none tracking-[0.02em] text-white transition-opacity duration-500`}
+            >
+              {text || ' '}
+            </motion.p>
+          </motion.div>
+        );
+      })}
     </motion.div>
+    </>
   );
 }

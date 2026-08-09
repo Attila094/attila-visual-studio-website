@@ -2,6 +2,8 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { Anton, Poppins } from 'next/font/google';
 import { infoPhases, infoTracks, type InfoBlock } from '@/content/info';
+import { GLASS_RING, GLASS_STYLE } from '@/components/glass';
+import { InfoTracks } from '@/components/info/InfoTracks';
 import { PAGE_TITLE_CLASS, PAGE_TITLE_STYLE, PAGE_TOP_PAD } from '@/components/pageTitle';
 
 /** The phase headings and every plate label are the heavy condensed face of the
@@ -12,9 +14,9 @@ import { PAGE_TITLE_CLASS, PAGE_TITLE_STYLE, PAGE_TOP_PAD } from '@/components/p
 const anton = Anton({ subsets: ['latin', 'latin-ext'], weight: '400' });
 const geo = Poppins({ subsets: ['latin', 'latin-ext'], weight: ['300', '700'] });
 
-/** Sampled out of `infopage.jpg`: the three service plates, the panel that
- *  holds the phases, and the labelled plates inside it. */
-const TRACK = '#333333';
+/** Sampled out of `infopage.jpg`: the panel that holds the phases, and the
+ *  labelled plates inside it. The three service plates carry their own colour
+ *  in `InfoTracks`, under their artwork. */
 const PANEL = '#262626';
 const PLATE = '#3c3c3c';
 
@@ -29,7 +31,7 @@ const PLATE_ASPECT = {
 /** Their columns. Spelled out rather than built from a template so Tailwind's
  *  scanner sees every class it has to generate. */
 const PLATE_COLS = {
-  sm: 'grid-cols-2 sm:grid-cols-3 md:grid-cols-5',
+  sm: 'grid-cols-2 sm:grid-cols-4',
   lg: 'grid-cols-1 sm:grid-cols-3',
 } as const;
 
@@ -39,9 +41,10 @@ const PLATE_TEXT = {
   lg: 'text-[clamp(1.2rem,4vw,3.6rem)] uppercase',
 } as const;
 
-/** Body copy. Dim, as drawn — the lead-ins above it carry the contrast. */
+/** Body copy. Dim, as drawn — the lead-ins above it carry the contrast. Set a
+ *  fifth smaller than the reference, which oversized it against the headings. */
 const BODY_CLASS =
-  'text-[clamp(0.9rem,1.75vw,1.6rem)] font-light leading-[1.45] text-white/40';
+  'text-[clamp(0.72rem,1.4vw,1.28rem)] font-light leading-[1.45] text-white/40';
 
 /**
  * The space above a block, which the reference varies by what precedes it: a
@@ -76,9 +79,11 @@ function Block({ block, className = '' }: { block: InfoBlock; className?: string
     );
   }
 
+  // A block with an `href` names its destination in the copy — the word itself
+  // becomes the button, rather than the whole line becoming a link.
   const body = block.paragraphs.map((paragraph, i) => (
     <p key={paragraph} className={`${BODY_CLASS} ${i ? 'mt-6' : 'mt-1.5'}`}>
-      {paragraph}
+      {block.href ? withButton(paragraph, block.href) : paragraph}
     </p>
   ));
 
@@ -91,14 +96,34 @@ function Block({ block, className = '' }: { block: InfoBlock; className?: string
           {block.heading}
         </p>
       )}
-      {block.href ? (
-        <Link href={block.href} className="block transition-opacity hover:opacity-60">
-          {body}
-        </Link>
-      ) : (
-        body
-      )}
+      {body}
     </div>
+  );
+}
+
+/** The label a linked block puts in its copy, in the caps the copy sets it in. */
+const BUTTON_WORD = 'CONTACT';
+
+/** Swaps that word for the studio's glass pill, leaving the sentence around it
+ *  as written. */
+function withButton(paragraph: string, href: string) {
+  const parts = paragraph.split(BUTTON_WORD);
+  if (parts.length === 1) return paragraph;
+
+  return parts.flatMap((part, i) =>
+    i === 0
+      ? [part]
+      : [
+          <Link
+            key={i}
+            href={href}
+            style={GLASS_STYLE}
+            className={`${anton.className} mx-1 inline-block rounded-full px-5 py-1 align-middle text-[0.95em] uppercase leading-none tracking-[0.01em] text-white ${GLASS_RING} transition-colors duration-300 hover:bg-white/25`}
+          >
+            {BUTTON_WORD}
+          </Link>,
+          part,
+        ],
   );
 }
 
@@ -117,23 +142,9 @@ export default function InfoPage() {
         </h1>
 
         {/* The three tracks the workflow is read for, as a row of plates across
-            the full measure. */}
-        <div className="mt-10 grid grid-cols-3 gap-4 sm:mt-14 sm:gap-6">
-          {infoTracks.map((track) => (
-            <div
-              key={track}
-              style={{ backgroundColor: TRACK }}
-              className="flex aspect-[719/997] items-center justify-center rounded-2xl p-3 text-center"
-            >
-              <span
-                className={`${anton.className} whitespace-pre-line text-[clamp(1rem,4vw,3.6rem)] uppercase leading-[1.28] text-white`}
-              >
-                {track}
-              </span>
-            </div>
-          ))}
-        </div>
-
+            the full measure — and, under the first of them, the workflow it
+            describes. The panel opens when that plate is pressed. */}
+        <InfoTracks tracks={infoTracks}>
         {/* One panel for the whole workflow, as in the reference — the phases
             run inside it rather than each carrying its own plate. */}
         <div
@@ -157,6 +168,7 @@ export default function InfoPage() {
             </section>
           ))}
         </div>
+        </InfoTracks>
       </div>
     </section>
   );

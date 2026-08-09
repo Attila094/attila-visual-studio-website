@@ -64,7 +64,12 @@ export function MainLayout() {
       // No z-index here on purpose: a positioned element with one creates a
       // stacking context that would trap this section relative to the fixed
       // sequence stage (z-30), which is what paints the tiles.
-      className="relative scroll-mt-24 bg-black px-4 pb-16 pt-10 sm:px-6 sm:pb-20"
+      // The bottom padding belongs to the gallery, not to the tile row: with
+      // the gallery closed it is space between the tiles and the footer with
+      // nothing in it, so it goes with the gallery it was holding open.
+      className={`relative scroll-mt-24 bg-black px-4 pt-10 transition-[padding] duration-300 ease-out sm:px-6 ${
+        selectedId ? 'pb-16 sm:pb-20' : 'pb-0'
+      }`}
     >
       <div className="mx-auto max-w-shell">
         <MainTiles />

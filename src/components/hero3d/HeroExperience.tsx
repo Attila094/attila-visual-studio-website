@@ -3,8 +3,17 @@
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { Bebas_Neue } from 'next/font/google';
-import { animate, motion, useMotionValue, useReducedMotion, useScroll, useTransform } from 'framer-motion';
+import {
+  AnimatePresence,
+  animate,
+  motion,
+  useMotionValue,
+  useReducedMotion,
+  useScroll,
+  useTransform,
+} from 'framer-motion';
 import { LogoDraw } from './LogoDraw';
+import { logoDockEnd } from '@/lib/heroSequenceState';
 import { useHeldViewportHeight } from '@/lib/useHeldViewportHeight';
 
 const bebas = Bebas_Neue({ subsets: ['latin', 'latin-ext'], weight: '400' });
@@ -15,157 +24,30 @@ const LINK_AT = 220;
 const NAV_TOP = 20;
 
 /* ================================================================
-   PREVIEW SEQUENCE (click "VISUAL STUDIO" to play)
+   TITLE SEQUENCE (click "VISUAL STUDIO" to play)
    ----------------------------------------------------------------
-   A 40s, 4-segment showcase that plays over the resting hero: the
-   centred title cross-fades through place-names while 5 placeholder
-   tiles fade + scale in around it (staggered), then out. The faint
-   15%-opacity logo behind the text acts as the backdrop watermark.
-
-   Adjust everything here. Each media slot accepts:
-     null / ""                         → labelled empty placeholder
-     "path/photo.jpg"                  → auto <img>
-     "path/clip.mp4"                   → auto <video> (muted, looped)
-     { type:"video", src, poster }     → explicit control
-     { type:"image", src, alt }        → explicit control
-   Media order per segment = [tile-1 TL, tile-2 TR, tile-3 L,
-   tile-4 BC, tile-5 R].
+   The brand fades away and the studio's disciplines take its place,
+   one at a time, over the resting hero. Each rises into view as it
+   fades in, holds, and fades out; the next begins as the last one
+   finishes, so only ever one is on screen.
    ================================================================ */
-type MediaEntry =
-  | string
-  | { type?: 'image' | 'video'; src: string; poster?: string; alt?: string }
-  | null;
-
-interface Segment {
-  text: string;
-  media: MediaEntry[];
-}
-
-const SEQUENCE: {
-  idleText: string;
-  segments: Segment[];
-  timing: {
-    segment: number;
-    tileInDur: number;
-    tileStagger: number;
-    tileOutAt: number;
-    tileOutDur: number;
-    textFade: number;
-    fadeFromOpacity: number;
-    fadeToOpacity: number;
-    scaleFrom: number;
-    scaleTo: number;
-  };
-} = {
-  idleText: 'VISUAL STUDIO',
-  // Media order per segment = [tile-1 TL, tile-2 TR, tile-3 L, tile-4 BC,
-  // tile-5 R]; assigned by aspect so each render fits its tile's shape.
-  // Optimised WebP renders live in /public/projects/sequence/.
-  segments: [
-    {
-      text: 'RÁD',
-      media: [
-        '/projects/sequence/rad-05.webp',
-        '/projects/sequence/rad-02.webp',
-        '/projects/sequence/rad-01.webp',
-        '/projects/sequence/rad-04.webp',
-        '/projects/sequence/rad-03.webp',
-      ],
-    },
-    {
-      text: 'HÉVÍZ',
-      media: [
-        '/projects/sequence/heviz-02.webp',
-        '/projects/sequence/heviz-03.webp',
-        '/projects/sequence/heviz-01.webp',
-        '/projects/sequence/heviz-04.webp',
-        '/projects/sequence/heviz-05.webp',
-      ],
-    },
-    {
-      // Helikon has 3 stills; reused across the 5 tiles (repeats not adjacent).
-      text: 'HELIKON',
-      media: [
-        '/projects/sequence/helikon-01.webp',
-        '/projects/sequence/helikon-03.webp',
-        '/projects/sequence/helikon-02.webp',
-        '/projects/sequence/helikon-01.webp',
-        '/projects/sequence/helikon-03.webp',
-      ],
-    },
-    {
-      text: 'MISINA',
-      media: [
-        '/projects/sequence/misina-01.webp',
-        '/projects/sequence/misina-04.webp',
-        '/projects/sequence/misina-05.webp',
-        '/projects/sequence/misina-02.webp',
-        '/projects/sequence/misina-03.webp',
-      ],
-    },
-  ],
-  timing: {
-    segment: 10, // seconds per segment (4 × 10 = 40s total)
-    tileInDur: 1, // tile fade + scale-in duration
-    tileStagger: 1.5, // delay between consecutive tiles appearing
-    tileOutAt: 9, // when tiles begin leaving, within a segment
-    tileOutDur: 1, // tile fade + scale-out duration
-    textFade: 1.2, // full text cross-fade (out + in)
-    // Tiles start fully hidden (opacity 0), then the enter animation brightens
-    // opacity 50% → 100% while scaling 90% → 120%.
-    fadeFromOpacity: 0.5, // opacity at the START of the fade-in (50%)
-    fadeToOpacity: 1, // opacity fully shown (100%)
-    scaleFrom: 0.9, // scale at the START of the fade-in (90%)
-    scaleTo: 1.2, // scale fully shown (120%)
-  },
-};
-
-// Tile anchor points (centre as a % of the viewport) + shape, matching
-// "project preview layout.jpg": TL landscape · TR square · L portrait ·
-// BC square · R portrait.
-const TILE_POSITIONS = [
-  { left: '37%', top: '20%', width: 'clamp(180px, 20vw, 400px)', aspectRatio: '4 / 3' },
-  { left: '69%', top: '19%', width: 'clamp(170px, 18vw, 360px)', aspectRatio: '1 / 1' },
-  { left: '16%', top: '51%', width: 'clamp(150px, 14vw, 300px)', aspectRatio: '3 / 4' },
-  { left: '50%', top: '80%', width: 'clamp(170px, 18vw, 360px)', aspectRatio: '1 / 1' },
-  { left: '86%', top: '67%', width: 'clamp(150px, 14vw, 300px)', aspectRatio: '3 / 4' },
+const SEQUENCE_WORDS = [
+  'Építészeti vizualizáció',
+  'Építészet',
+  'Belsőépítészet',
+  'Fotográfia',
+  'Videográfia',
+  'Grafikai tervezés',
+  '3D nyomtatás',
 ] as const;
 
-// Renders an injected <img>/<video>, or a labelled placeholder when empty.
-function TileMedia({ entry, label }: { entry: MediaEntry; label: string }) {
-  if (!entry) {
-    return (
-      <div className="absolute inset-0 grid place-items-center bg-white/[0.04]">
-        <span className="text-[0.7rem] tracking-[0.25em] text-white/50">{label}</span>
-      </div>
-    );
-  }
-  const e = typeof entry === 'string' ? { src: entry } : entry;
-  const isVideo = ('type' in e && e.type === 'video') || /\.(mp4|webm|mov)$/i.test(e.src || '');
-  if (isVideo) {
-    return (
-      <video
-        className="absolute inset-0 h-full w-full object-cover"
-        src={e.src}
-        poster={'poster' in e ? e.poster : undefined}
-        muted
-        loop
-        autoPlay
-        playsInline
-      />
-    );
-  }
-  return (
-    // eslint-disable-next-line @next/next/no-img-element
-    <img
-      className="absolute inset-0 h-full w-full object-cover"
-      src={e.src}
-      alt={('alt' in e && e.alt) || label}
-      loading="lazy"
-      decoding="async"
-    />
-  );
-}
+/** Seconds. Both fades, and the still moment between them. */
+const FADE = 1;
+const HOLD = 3;
+/** One word, start to start — and so the beat the whole sequence keeps. */
+const STEP = FADE + HOLD + FADE;
+/** How far a word rises as it appears. */
+const RISE = 28;
 
 /**
  * Hero:
@@ -176,8 +58,9 @@ function TileMedia({ entry, label }: { entry: MediaEntry; label: string }) {
  *  2. On scroll the logo shrinks and lifts to the top of the screen, becoming a
  *     Home link; the text fades out. Docked, the logo's height matches the menu
  *     bar's height (measured live), so the two align as a top bar.
- *  3. At rest, clicking "VISUAL STUDIO" plays the 40s preview sequence (see
- *     SEQUENCE above); it resets itself and is clickable again afterwards.
+ *  3. At rest, clicking "VISUAL STUDIO" fades it out and plays the discipline
+ *     sequence (see SEQUENCE_WORDS above); it resets itself and is clickable
+ *     again afterwards.
  *
  * `onRevealed` fires when the draw completes so the global BallMenu appears.
  */
@@ -217,12 +100,11 @@ export function HeroExperience({ onRevealed }: { onRevealed?: () => void } = {})
     return Math.max(s, dockRestore);
   });
 
-  // ---- Preview-sequence state ------------------------------------------
+  // ---- Title-sequence state --------------------------------------------
   const [playing, setPlaying] = useState(false);
-  const [seqLabel, setSeqLabel] = useState(SEQUENCE.idleText);
-  const [seqVisible, setSeqVisible] = useState(true); // drives the text cross-fade
-  const [segIndex, setSegIndex] = useState(0); // which segment's media to show
-  const [tilesIn, setTilesIn] = useState<boolean[]>([false, false, false, false, false]);
+  /** Which word is on screen, or none — between the brand's fade-out and the
+   *  first word, and again while the last one leaves. */
+  const [wordIndex, setWordIndex] = useState<number | null>(null);
   const playingRef = useRef(false); // synchronous guard against double-start
   const timers = useRef<number[]>([]); // every pending timeout, cleared on reset
 
@@ -233,68 +115,43 @@ export function HeroExperience({ onRevealed }: { onRevealed?: () => void } = {})
   const schedule = (sec: number, fn: () => void) => {
     timers.current.push(window.setTimeout(fn, sec * 1000));
   };
-  // Fade the title out, swap the string, fade it back in.
-  const crossfadeLabel = (next: string) => {
-    setSeqVisible(false);
-    timers.current.push(
-      window.setTimeout(() => {
-        setSeqLabel(next);
-        setSeqVisible(true);
-      }, (SEQUENCE.timing.textFade / 2) * 1000),
-    );
-  };
-  const showTile = (k: number) =>
-    setTilesIn((prev) => {
-      const next = [...prev];
-      next[k] = true;
-      return next;
-    });
-  const hideAllTiles = () => setTilesIn([false, false, false, false, false]);
 
   const resetSequence = () => {
     clearTimers();
     playingRef.current = false;
-    hideAllTiles();
-    setSeqVisible(true);
-    setSeqLabel(SEQUENCE.idleText);
+    setWordIndex(null);
     setPlaying(false);
   };
 
-  // Build + run the 40s timeline. Guarded to the resting hero only.
+  /**
+   * The timeline. The brand takes the first second to leave, then each word
+   * owns a STEP: a second rising in, five still, a second leaving. The index is
+   * moved at the moment a word should start leaving — `AnimatePresence` in
+   * `wait` mode plays that exit in full before the next word begins, which is
+   * what makes one word's exit and the next one's entrance line up end to end.
+   */
   const startSequence = () => {
     if (playingRef.current || !drawn || window.scrollY > 40) return;
     playingRef.current = true;
-    setPlaying(true);
-    setSegIndex(0);
-    setSeqLabel(SEQUENCE.idleText); // seamless hand-off from the idle title
-    setSeqVisible(true);
-    hideAllTiles();
+    setPlaying(true); // the brand starts fading out
+    setWordIndex(null);
 
-    const T = SEQUENCE.timing;
-    const seg = T.segment;
-
-    SEQUENCE.segments.forEach((s, i) => {
-      const base = i * seg;
-      // place-name cross-fade + load this segment's media into the hidden tiles
-      schedule(base, () => {
-        setSegIndex(i);
-        crossfadeLabel(s.text);
-      });
-      // tiles fade + scale in, staggered
-      for (let k = 0; k < TILE_POSITIONS.length; k++) {
-        schedule(base + k * T.tileStagger, () => showTile(k));
-      }
-      // tiles fade + scale out at the tileOutAt mark
-      schedule(base + T.tileOutAt, hideAllTiles);
+    schedule(FADE, () => setWordIndex(0));
+    SEQUENCE_WORDS.forEach((_, i) => {
+      const leaveAt = FADE + i * STEP + FADE + HOLD;
+      schedule(leaveAt, () => setWordIndex(i + 1 < SEQUENCE_WORDS.length ? i + 1 : null));
     });
-
-    const end = SEQUENCE.segments.length * seg; // 40s
-    schedule(end - T.tileOutDur, () => crossfadeLabel(SEQUENCE.idleText)); // morph back
-    schedule(end, resetSequence); // reset → clickable again
+    schedule(FADE + SEQUENCE_WORDS.length * STEP, resetSequence);
   };
 
   // Cancel any pending timers if the hero unmounts mid-sequence.
   useEffect(() => () => clearTimers(), []);
+
+  // Publish where the dock ends, so the image sequence below knows when the
+  // logo has stopped moving and its own captions may begin.
+  useEffect(() => {
+    logoDockEnd.set(dims.endScroll);
+  }, [dims.endScroll]);
 
   // Measure the viewport, the logo's rest box, and the menu bar's height so the
   // docked logo lands at the top at the menu bar's height.
@@ -354,18 +211,6 @@ export function HeroExperience({ onRevealed }: { onRevealed?: () => void } = {})
     requestAnimationFrame(step);
   };
 
-  // Title content: the two-word brand, or a single place-name (kept centred
-  // against the trailing letter-spacing via text-indent).
-  const renderLabel = (text: string) =>
-    text === SEQUENCE.idleText ? (
-      <span className="flex items-center gap-[1.1em]">
-        <span>Visual</span>
-        <span>Studio</span>
-      </span>
-    ) : (
-      <span className="[text-indent:0.6em]">{text}</span>
-    );
-
   return (
     <>
       {/* Dark hero backdrop — the first viewport; scrolls away under the logo.
@@ -401,80 +246,51 @@ export function HeroExperience({ onRevealed }: { onRevealed?: () => void } = {})
           </Link>
         </motion.div>
 
-        {/* Preview-sequence tiles — only mounted while playing, so the resting
-            hero is unchanged. Fades with the title on scroll (shared textFade). */}
-        {playing && (
-          <motion.div aria-hidden style={{ opacity: textFade }} className="pointer-events-none absolute inset-0">
-            {TILE_POSITIONS.map((pos, k) => {
-              const seg = SEQUENCE.segments[segIndex];
-              const label = `${seg.text} · ${String(k + 1).padStart(2, '0')}`;
-              const shown = tilesIn[k];
-              return (
-                // Wrapper centres the tile on its anchor; the figure scales
-                // around its own centre so translate + scale don't conflict.
-                <div
-                  key={k}
-                  className="absolute"
-                  style={{
-                    left: pos.left,
-                    top: pos.top,
-                    width: pos.width,
-                    aspectRatio: pos.aspectRatio,
-                    transform: 'translate(-50%, -50%)',
-                  }}
-                >
-                  <motion.figure
-                    className="relative m-0 h-full w-full overflow-hidden rounded-[2px] bg-neutral-900 ring-1 ring-white/10 will-change-transform"
-                    initial={false}
-                    animate={shown ? 'in' : 'out'}
-                    variants={{
-                      // Off: fully hidden.
-                      out: { opacity: 0, scale: reduce ? 1 : SEQUENCE.timing.scaleFrom },
-                      // In: brighten 50% → 100% while scaling 90% → 120%.
-                      in: {
-                        opacity: [SEQUENCE.timing.fadeFromOpacity, SEQUENCE.timing.fadeToOpacity],
-                        scale: reduce
-                          ? 1
-                          : [SEQUENCE.timing.scaleFrom, SEQUENCE.timing.scaleTo],
-                      },
-                    }}
-                    transition={{ duration: SEQUENCE.timing.tileInDur, ease: 'easeOut' }}
-                  >
-                    <TileMedia entry={seg.media[k]} label={label} />
-                  </motion.figure>
-                </div>
-              );
-            })}
-          </motion.div>
-        )}
-
-        {/* "VISUAL STUDIO" — overlaid at the centre of the logo; fades out on
-            scroll. At rest it's the (clickable) sequence trigger; while playing
-            it cross-fades through the place-names. */}
-        <motion.div
-          style={{ opacity: textFade }}
-          className="pointer-events-none absolute inset-0 flex items-center justify-center"
-        >
-          {playing ? (
-            <div
-              aria-hidden
-              style={{ opacity: seqVisible ? 1 : 0 }}
-              className={`${bebas.className} flex items-center justify-center text-[1.25rem] uppercase tracking-[0.6em] text-white transition-opacity duration-[600ms] ease-out sm:text-[1.9rem] lg:text-[2.4rem]`}
-            >
-              {renderLabel(seqLabel)}
-            </div>
-          ) : (
+        {/* The centred title: the brand at rest, the disciplines while the
+            sequence plays. Both live in the same box so one takes over exactly
+            where the other left. Fades out on scroll (shared textFade). */}
+        <motion.div style={{ opacity: textFade }} className="pointer-events-none absolute inset-0">
+          {/* "VISUAL STUDIO" — the trigger. It is never unmounted while it
+              plays: it has to fade out over its own second, not vanish. */}
+          <div className="absolute inset-0 flex items-center justify-center">
             <motion.button
               type="button"
               onClick={startSequence}
               aria-label="Projekt előnézet lejátszása"
-              style={{ pointerEvents: textPointer, opacity: drawn ? 1 : 0, transitionDelay: drawn ? '250ms' : '0ms' }}
+              style={{
+                pointerEvents: playing ? 'none' : textPointer,
+                opacity: drawn && !playing ? 1 : 0,
+                transitionDuration: playing ? `${FADE * 1000}ms` : undefined,
+                transitionDelay: drawn && !playing ? '250ms' : '0ms',
+              }}
               className={`${bebas.className} m-0 flex cursor-pointer appearance-none items-center gap-[1.1em] border-0 bg-transparent p-0 text-[1.25rem] uppercase tracking-[0.6em] text-white outline-none transition-opacity duration-[1600ms] ease-out focus-visible:outline focus-visible:outline-1 focus-visible:outline-offset-[0.4em] focus-visible:outline-white/40 sm:text-[1.9rem] lg:text-[2.4rem]`}
             >
               <span aria-hidden>Visual</span>
               <span aria-hidden>Studio</span>
             </motion.button>
-          )}
+          </div>
+
+          {/* One discipline at a time. `wait` is what holds the beat: the word
+              leaving finishes before the next one starts to rise. */}
+          <div className="absolute inset-0 flex items-center justify-center px-6">
+            <AnimatePresence mode="wait">
+              {wordIndex !== null && (
+                <motion.p
+                  key={wordIndex}
+                  aria-hidden
+                  initial={{ opacity: 0, y: reduce ? 0 : RISE }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: FADE, ease: 'easeOut' }}
+                  // The negative right margin swallows the letter-spacing that
+                  // trails the last glyph, so the ink is centred, not the box.
+                  className={`${bebas.className} m-0 max-w-[92vw] -mr-[0.35em] text-center text-[1.25rem] uppercase leading-tight tracking-[0.35em] text-white sm:-mr-[0.6em] sm:text-[1.9rem] sm:tracking-[0.6em] lg:text-[2.4rem]`}
+                >
+                  {SEQUENCE_WORDS[wordIndex]}
+                </motion.p>
+              )}
+            </AnimatePresence>
+          </div>
         </motion.div>
       </div>
     </>

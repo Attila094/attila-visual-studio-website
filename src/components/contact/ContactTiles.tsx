@@ -6,6 +6,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { contactCategories, type ContactCategory } from '@/content/contactServices';
 import { services, type ServiceItem } from '@/content/services';
 import { PanTrack } from '@/components/PanTrack';
+import { QuickContactForm, type QuickPick } from '@/components/contact/QuickContactForm';
 import { morphSpring } from '@/lib/motion';
 
 const bebas = Bebas_Neue({ subsets: ['latin', 'latin-ext'], weight: '400' });
@@ -22,15 +23,22 @@ function tileLayoutId(id: string) {
   return `contact-tile-${id}`;
 }
 
-function mailto(email: string, label: string) {
-  return `mailto:${email}?subject=${encodeURIComponent(`Ajánlatkérés — ${label}`)}`;
-}
-
 /**
  * One service inside an opened tile. Same behaviour as the services-page
  * cards: a still lifts on hover, a clip plays instead, a panorama orbits.
+ *
+ * Choosing one adds it to the enquiry below rather than opening a mail client
+ * on the spot — the point is to collect several before writing anything.
  */
-function ServiceTile({ item, email }: { item: ServiceItem; email: string }) {
+function ServiceTile({
+  item,
+  picked,
+  onToggle,
+}: {
+  item: ServiceItem;
+  picked: boolean;
+  onToggle: () => void;
+}) {
   const video = useRef<HTMLVideoElement>(null);
 
   const play = useCallback(() => {
@@ -44,17 +52,21 @@ function ServiceTile({ item, email }: { item: ServiceItem; email: string }) {
   }, []);
 
   return (
-    <a
-      href={mailto(email, item.label)}
+    <button
+      type="button"
+      onClick={onToggle}
+      aria-pressed={picked}
       onPointerEnter={item.video ? play : undefined}
       onPointerLeave={item.video ? stop : undefined}
       onFocus={item.video ? play : undefined}
       onBlur={item.video ? stop : undefined}
-      className="group block"
+      className="group block w-full text-left"
     >
       <span
         style={{ backgroundColor: PLATE }}
         className={`relative block aspect-[3/4] overflow-hidden rounded-xl transition duration-300 group-hover:brightness-110 ${
+          picked ? 'ring-2 ring-white' : ''
+        } ${
           // A clip or a panorama answers the hover with its own motion, so the
           // tile doesn't also zoom.
           item.video || item.pan ? '' : 'group-hover:scale-[1.03]'
@@ -90,11 +102,13 @@ function ServiceTile({ item, email }: { item: ServiceItem; email: string }) {
         )}
       </span>
       <span
-        className={`${montserrat.className} mt-2 block break-words text-xs lowercase leading-snug text-white/85 sm:text-sm`}
+        className={`${montserrat.className} mt-2 block break-words text-xs lowercase leading-snug sm:text-sm ${
+          picked ? 'text-white' : 'text-white/85'
+        }`}
       >
         {item.label}
       </span>
-    </a>
+    </button>
   );
 }
 
@@ -130,6 +144,22 @@ export function ContactTiles({ email }: { email: string }) {
   const category = contactCategories.find((c) => c.serviceId === open) ?? null;
   const service = services.find((s) => s.id === open) ?? null;
 
+  // What the visitor has picked so far, across every category — the enquiry
+  // form below is built from this and nothing else.
+  const [picks, setPicks] = useState<QuickPick[]>([]);
+  // Sending empties the basket, which would take the form — and its
+  // confirmation — down with it. So the form outlives the picks by one state.
+  const [sent, setSent] = useState(false);
+  const togglePick = useCallback((pick: QuickPick) => {
+    setSent(false);
+    setPicks((prev) =>
+      prev.some((p) => p.key === pick.key) ? prev.filter((p) => p.key !== pick.key) : [...prev, pick],
+    );
+  }, []);
+  const removePick = useCallback((key: string) => {
+    setPicks((prev) => prev.filter((p) => p.key !== key));
+  }, []);
+
   // On a wide screen the items fit one row and the panel is exactly as tall as
   // the tiles it covers. Narrower, they wrap — so the box reserves the panel's
   // height and the rest of the page moves down instead of being written over.
@@ -152,7 +182,13 @@ export function ContactTiles({ email }: { email: string }) {
   useEffect(() => {
     if (!open) return;
     const onDown = (e: PointerEvent) => {
-      if (!(e.target as HTMLElement).closest?.('[data-contact-panel]')) setOpen(null);
+      // The form counts as inside: picking a service and then typing about it
+      // is one gesture, and collapsing the category under the cursor would
+      // pull the form up from under it.
+      const el = e.target as HTMLElement;
+      if (!el.closest?.('[data-contact-panel]') && !el.closest?.('[data-contact-form]')) {
+        setOpen(null);
+      }
     };
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') setOpen(null);
@@ -166,8 +202,9 @@ export function ContactTiles({ email }: { email: string }) {
   }, [open]);
 
   return (
-    // The panel is absolutely placed against this box, so it grows to exactly
-    // the four tiles it replaces.
+    <div className="w-full">
+    {/* The panel is absolutely placed against this box, so it grows to exactly
+        the four tiles it replaces. */}
     <div
       className="relative w-full transition-[min-height] duration-300 ease-out"
       style={{ minHeight: panelHeight || undefined }}
@@ -225,15 +262,44 @@ export function ContactTiles({ email }: { email: string }) {
             {/* One tile per service in this category, straight from the
                 services page. Short rows simply stop early. */}
             <ul className="mt-4 grid grid-cols-2 gap-x-3 gap-y-5 sm:grid-cols-3 md:grid-cols-5 md:gap-x-4">
-              {service.items.map((item) => (
-                <li key={item.label}>
-                  <ServiceTile item={item} email={email} />
-                </li>
-              ))}
+              {service.items.map((item) => {
+                const key = `${category.serviceId}:${item.label}`;
+                return (
+                  <li key={item.label}>
+                    <ServiceTile
+                      item={item}
+                      picked={picks.some((p) => p.key === key)}
+                      onToggle={() =>
+                        togglePick({
+                          key,
+                          label: item.label,
+                          category: category.label,
+                          image: item.image,
+                        })
+                      }
+                    />
+                  </li>
+                );
+              })}
             </ul>
           </motion.div>
         )}
       </AnimatePresence>
+    </div>
+
+    {/* The enquiry itself, under the tiles and the same width, from the moment
+        the first service is picked. */}
+    {(picks.length > 0 || sent) && (
+      <QuickContactForm
+        picks={picks}
+        onRemove={removePick}
+        onSent={() => {
+          setSent(true);
+          setPicks([]);
+        }}
+        email={email}
+      />
+    )}
     </div>
   );
 }

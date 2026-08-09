@@ -28,6 +28,9 @@ export interface VizAnimation {
 }
 
 export const vizStills: VizStill[] = [
+  // The two Misina shots open the set — the rest keeps its previous order.
+  { src: '/media/viz/still/misina-01.webp', width: 1600, height: 1200 },
+  { src: '/media/viz/still/misina-04.webp', width: 1600, height: 1600 },
   { src: '/media/viz/still/cover-helikon-facade-shot.webp', width: 1200, height: 1600 },
   { src: '/media/viz/still/helikon-cloudy-shot.webp', width: 1600, height: 1054 },
   { src: '/media/viz/still/helikon-winter-pink-sky.webp', width: 1600, height: 1200 },
@@ -39,7 +42,6 @@ export const vizStills: VizStill[] = [
   { src: '/media/viz/still/heviz-05.webp', width: 1200, height: 1600 },
   { src: '/media/viz/still/heviz-a109-bathroom.webp', width: 1200, height: 1600 },
   { src: '/media/viz/still/heviz-a307-kitchen.webp', width: 1600, height: 1200 },
-  { src: '/media/viz/still/heviz-a307-kitchen-detail.webp', width: 1200, height: 1600 },
   { src: '/media/viz/still/heviz-a405-nappali.webp', width: 1600, height: 1600 },
   { src: '/media/viz/still/heviz-a405-szoba.webp', width: 1600, height: 1600 },
   { src: '/media/viz/still/heviz-b302-bathroom.webp', width: 1200, height: 1600 },
@@ -50,9 +52,7 @@ export const vizStills: VizStill[] = [
   { src: '/media/viz/still/heviz-aerial-00.webp', width: 1600, height: 1600 },
   { src: '/media/viz/still/heviz-aerial-01.webp', width: 1600, height: 1429 },
   { src: '/media/viz/still/heviz-aerial-02.webp', width: 1600, height: 1319 },
-  { src: '/media/viz/still/misina-01.webp', width: 1600, height: 1200 },
   { src: '/media/viz/still/misina-03.webp', width: 1600, height: 1200 },
-  { src: '/media/viz/still/misina-04.webp', width: 1600, height: 1600 },
   { src: '/media/viz/still/misina-05.webp', width: 1200, height: 1600 },
   { src: '/media/viz/still/exterior-001-1.webp', width: 1600, height: 1600 },
   { src: '/media/viz/still/exterior-001-2.webp', width: 1600, height: 1600 },

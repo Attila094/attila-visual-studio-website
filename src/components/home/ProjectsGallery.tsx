@@ -1,13 +1,15 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { AnimatePresence, motion } from 'framer-motion';
 import { galleryProjects, type Category, type GalleryItem } from '@/content/galleryProjects';
 import { allPhotos, allVideos } from '@/content/photoVideo';
-import { projectLayoutId } from '@/lib/motion';
+import { graphicAxonometries, graphicMotion, graphicPlans } from '@/content/graphics';
+import { morphSpring, projectLayoutId } from '@/lib/motion';
 import { shouldBypassOptimizer } from '@/lib/image';
+import { MASONRY_GAP, masonryRowSpan, masonryTracks } from '@/lib/masonry';
 import { VisualizationGallery } from './VisualizationGallery';
 
 type Filter = 'all' | Category;
@@ -66,27 +68,91 @@ const pad = (n: number) => String(n).padStart(2, '0');
  * One project in an architect section. `item` is the backing gallery project —
  * when absent the tile renders as a named placeholder awaiting real imagery.
  */
-type ArchitectEntry = { name: string; item?: GalleryItem };
+type ArchitectEntry = {
+  name: string;
+  /** The project's own cover shot, out of `Építészet és belsőépítészet`. */
+  cover?: string;
+  /** Somewhere other than a project page for the tile to lead — the tiles that
+   *  are an invitation rather than a finished job. */
+  href?: string;
+  item?: GalleryItem;
+};
 
-function ArchitectTile({ entry }: { entry: ArchitectEntry }) {
-  const { name, item } = entry;
+/**
+ * Whether a project has photography behind it yet. The remaining `.svg` sources
+ * are the scaffolding plates from before the real renders arrived — they read
+ * as finished tiles, which is worse than an honest "hamarosan".
+ */
+function hasArtwork(item?: GalleryItem): item is GalleryItem {
+  return !!item && !item.src.toLowerCase().endsWith('.svg');
+}
 
-  // Project name only — the numbering belongs to the label column beside this
-  // row, so numbering both would make "01" point at two different things.
+const TILE_SIZES = '(min-width: 1024px) 15vw, (min-width: 768px) 30vw, 45vw';
+
+function ArchitectTile({ entry, index }: { entry: ArchitectEntry; index: number }) {
+  const { name, cover, href } = entry;
+  // Only a project whose own page has something to show is worth linking to.
+  const item = hasArtwork(entry.item) ? entry.item : undefined;
+  // The cover shot leads; failing that, the project's own artwork.
+  const src = cover ?? item?.src;
+
+  // The tile carries the same number as its line in the list beside it: the two
+  // are built from one array, so they cannot drift. Number left, name right.
   const caption = (
-    <figcaption className="mb-2 flex items-center border-t border-white/20 pt-2 text-[10px] font-semibold uppercase tracking-[0.2em] text-white/55">
+    <figcaption className="mb-2 flex items-baseline justify-between gap-3 text-[10px] font-semibold uppercase tracking-[0.2em] text-white/55">
+      <span className="tabular-nums text-white/40">{pad(index + 1)}</span>
       <span className="truncate">{name}</span>
     </figcaption>
   );
 
+  if (!src) {
+    const plate = (
+      <span className="grid aspect-[3/5] w-full place-items-center bg-white/5 ring-1 ring-white/10">
+        <span className="px-2 text-center text-[9px] uppercase tracking-[0.25em] text-white/30">
+          hamarosan
+        </span>
+      </span>
+    );
+    return (
+      <figure className="flex w-40 shrink-0 flex-col sm:w-48 lg:w-56">
+        {caption}
+        {href ? (
+          // The plate itself is the button: there is no work to show yet, so
+          // the tile's whole job is to lead to the enquiry form.
+          <Link
+            href={href}
+            draggable={false}
+            className="block w-full ring-inset transition-colors hover:[&>span]:bg-white/10 hover:[&>span>span]:text-white/60"
+          >
+            {plate}
+          </Link>
+        ) : (
+          plate
+        )}
+      </figure>
+    );
+  }
+
+  const art = (
+    <Image
+      src={src}
+      alt={item?.alt ?? `${name} — építészeti projekt`}
+      fill
+      sizes={TILE_SIZES}
+      unoptimized={shouldBypassOptimizer(src)}
+      draggable={false}
+      className="pointer-events-none object-cover transition-transform duration-500 ease-out group-hover:scale-[1.04]"
+    />
+  );
+
+  // A cover with no project page behind it is just a picture — no link, and no
+  // morph handle either, since there is no hero on the other side to morph to.
   if (!item) {
     return (
       <figure className="flex w-40 shrink-0 flex-col sm:w-48 lg:w-56">
         {caption}
-        <div className="grid aspect-[3/5] w-full place-items-center bg-white/5 ring-1 ring-white/10">
-          <span className="px-2 text-center text-[9px] uppercase tracking-[0.25em] text-white/30">
-            hamarosan
-          </span>
+        <div className="group relative block aspect-[3/5] w-full overflow-hidden bg-white/5">
+          {art}
         </div>
       </figure>
     );
@@ -106,15 +172,7 @@ function ArchitectTile({ entry }: { entry: ArchitectEntry }) {
           className="absolute inset-0"
           style={{ willChange: 'transform' }}
         >
-          <Image
-            src={item.src}
-            alt={item.alt}
-            fill
-            sizes="(min-width: 1024px) 15vw, (min-width: 768px) 30vw, 45vw"
-            unoptimized={shouldBypassOptimizer(item.src)}
-            draggable={false}
-            className="pointer-events-none object-cover transition-transform duration-500 ease-out group-hover:scale-[1.04]"
-          />
+          {art}
         </motion.div>
       </Link>
     </figure>
@@ -183,8 +241,8 @@ function ArchitectTileRow({ entries }: { entries: ArchitectEntry[] }) {
       onClickCapture={onClickCapture}
       className="flex gap-3 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [@media(hover:hover)and(pointer:fine)]:cursor-grab [@media(hover:hover)and(pointer:fine)]:active:cursor-grabbing [&::-webkit-scrollbar]:hidden"
     >
-      {entries.map((entry) => (
-        <ArchitectTile key={entry.item?.slug ?? entry.name} entry={entry} />
+      {entries.map((entry, i) => (
+        <ArchitectTile key={entry.item?.slug ?? entry.name} entry={entry} index={i} />
       ))}
     </div>
   );
@@ -203,41 +261,45 @@ function ArchitectTileRow({ entries }: { entries: ArchitectEntry[] }) {
 function ArchitectSection({
   title,
   entries,
-  listItems,
   lowercase,
 }: {
   title: string;
-  /** The tiles, in order. */
+  /** The tiles AND the numbered list beside them, in order — one array, so a
+   *  tile's number can never point at a different project than its line. */
   entries: ArchitectEntry[];
-  /** Optional curated list for the numbered label column. Falls back to the
-   *  entries' own names when omitted. */
-  listItems?: string[];
   lowercase?: boolean;
 }) {
-  const list = listItems ?? entries.map((e) => e.name);
   return (
-    <section className="grid grid-cols-1 items-stretch gap-x-6 gap-y-6 lg:grid-cols-[180px_1fr]">
-      {/* Label column. On desktop it stretches to the tile row's height and the
-          list scrolls vertically inside that height if it overflows. */}
-      <div className="relative lg:min-h-0">
-        <div className="flex h-full flex-col lg:absolute lg:inset-0">
-          <h3 className="text-sm font-semibold uppercase tracking-[0.18em] text-white">{title}</h3>
-          <ol className="mt-3 min-h-0 flex-1 space-y-1 overflow-y-auto pr-2 [scrollbar-color:rgba(255,255,255,0.25)_transparent] [scrollbar-width:thin] [&::-webkit-scrollbar-thumb]:rounded [&::-webkit-scrollbar-thumb]:bg-white/20 [&::-webkit-scrollbar]:w-1">
-            {list.map((loc, i) => (
-              <li key={`${loc}-${i}`} className="flex gap-3 text-sm">
+    <section>
+      <h3 className="text-sm font-semibold uppercase tracking-[0.18em] text-white">{title}</h3>
+
+      {/* One rule for the whole section, hung off the bottom of the title and
+          running to the end of the tile row — rather than a short stub over
+          each tile. */}
+      <div className="mt-2 border-t border-white/20" />
+
+      <div className="mt-3 grid grid-cols-1 items-stretch gap-x-6 gap-y-6 lg:grid-cols-[180px_1fr]">
+        {/* Label column. On desktop it stretches to the tile row's height and
+            the list scrolls vertically inside that height if it overflows. */}
+        <div className="relative lg:min-h-0">
+          <ol className="min-h-0 space-y-1 overflow-y-auto pr-2 lg:absolute lg:inset-0 [scrollbar-color:rgba(255,255,255,0.25)_transparent] [scrollbar-width:thin] [&::-webkit-scrollbar-thumb]:rounded [&::-webkit-scrollbar-thumb]:bg-white/20 [&::-webkit-scrollbar]:w-1">
+            {entries.map((entry, i) => (
+              <li key={`${entry.name}-${i}`} className="flex gap-3 text-sm">
                 <span className="tabular-nums text-white/40">{pad(i + 1)}</span>
-                <span className={`tracking-wide text-white/80 ${lowercase ? 'lowercase' : 'uppercase'}`}>
-                  {loc}
+                <span
+                  className={`tracking-wide text-white/80 ${lowercase ? 'lowercase' : 'uppercase'}`}
+                >
+                  {entry.name}
                 </span>
               </li>
             ))}
           </ol>
         </div>
-      </div>
 
-      {/* Horizontally scrollable + draggable image tiles. */}
-      <div className="min-w-0">
-        <ArchitectTileRow entries={entries} />
+        {/* Horizontally scrollable + draggable image tiles. */}
+        <div className="min-w-0">
+          <ArchitectTileRow entries={entries} />
+        </div>
       </div>
     </section>
   );
@@ -248,18 +310,27 @@ function ArchitectSection({
  * two stacked editorial sections (Építészet ← exterior, Belsőépítészet ←
  * interior). Reuses the same dark panel shell as the default gallery.
  */
-// Curated location list for the Építészet label column (independent of how many
-// image tiles currently exist — the list scrolls, the tiles scroll separately).
-const EPITESZET_LOCATIONS = [
-  'Rád',
-  'Szugló',
-  'Hertelend',
-  'Újpest',
-  'Hévíz',
-  'Keszthely',
-  'Budapest',
-  'Tab',
-  'Pécs',
+/** Where the cover shots from `Építészet és belsőépítészet` are served from. */
+const ARCH = '/media/architecture';
+
+type ArchitectProject = { name: string; slug?: string; cover?: string; href?: string };
+
+/**
+ * The Építészet projects, in order — the same shape as Belsőépítészet below.
+ * One array drives both the numbered list and the tiles, so tile 01 is the
+ * project on line 01. `cover` is that project's own cover shot; `slug` attaches
+ * the tile to a project page. With neither — or with only a project still on a
+ * placeholder plate — the tile reads "hamarosan".
+ */
+const EPITESZET_PROJECTS: ArchitectProject[] = [
+  { name: 'Rád', slug: 'rad-house', cover: `${ARCH}/epiteszet/rad.webp` },
+  { name: 'Szugló', cover: `${ARCH}/epiteszet/szuglo.webp` },
+  { name: 'Hertelend', cover: `${ARCH}/epiteszet/hertelend.webp` },
+  { name: 'Újpest' },
+  { name: 'Budapest - Hosszúrét', cover: `${ARCH}/epiteszet/budapest-hosszuret.webp` },
+  // Not a project: the open slot at the end of the row, on its blank plate,
+  // leading to the contact form.
+  { name: 'Projected', href: '/contact' },
 ];
 
 /**
@@ -268,35 +339,33 @@ const EPITESZET_LOCATIONS = [
  * `slug` attaches a tile to a real project page; entries without one render as
  * named placeholders until their imagery exists.
  */
-const BELSOEPITESZET_PROJECTS: { name: string; slug?: string }[] = [
-  { name: 'Pécs - Rókus' },
-  { name: 'Hévíz' },
+const BELSOEPITESZET_PROJECTS: ArchitectProject[] = [
+  { name: 'Pécs - Rókus', cover: `${ARCH}/belsoepiteszet/pecs-rokus.webp` },
+  { name: 'Rád', slug: 'rad-kitchen', cover: `${ARCH}/belsoepiteszet/rad.webp` },
+  { name: 'Hévíz', cover: `${ARCH}/belsoepiteszet/heviz.webp` },
+  { name: 'Budapest - Pinty', cover: `${ARCH}/belsoepiteszet/budapest-pinty.webp` },
+  { name: 'Pécs - Petrus', cover: `${ARCH}/belsoepiteszet/pecs-petrus.webp` },
   { name: 'Újpest' },
-  { name: 'Rád', slug: 'rad-kitchen' },
-  { name: 'Pécs - TP' },
-  { name: 'Pécs - Petrus' },
-  { name: 'Artwork' },
+  { name: 'Gödöllő', cover: `${ARCH}/belsoepiteszet/godollo.webp` },
 ];
 
 function ArchitectLayout() {
-  const exterior = galleryProjects.filter((p) => p.category === 'exterior');
-  const exteriorEntries: ArchitectEntry[] = exterior.map((item) => ({
-    name: item.location,
-    item,
-  }));
-  const interiorEntries: ArchitectEntry[] = BELSOEPITESZET_PROJECTS.map(({ name, slug }) => ({
-    name,
-    item: slug ? galleryProjects.find((p) => p.slug === slug) : undefined,
-  }));
+  const toEntries = (projects: ArchitectProject[]): ArchitectEntry[] =>
+    projects.map(({ name, slug, cover, href }) => ({
+      name,
+      cover,
+      href,
+      item: slug ? galleryProjects.find((p) => p.slug === slug) : undefined,
+    }));
 
   return (
     <div className="space-y-10 rounded-3xl bg-[#111111] p-3 ring-1 ring-white/10 sm:p-5">
+      <ArchitectSection title="Építészet" entries={toEntries(EPITESZET_PROJECTS)} />
       <ArchitectSection
-        title="Építészet"
-        entries={exteriorEntries}
-        listItems={EPITESZET_LOCATIONS}
+        title="Belsőépítészet"
+        entries={toEntries(BELSOEPITESZET_PROJECTS)}
+        lowercase
       />
-      <ArchitectSection title="Belsőépítészet" entries={interiorEntries} lowercase />
     </div>
   );
 }
@@ -410,27 +479,46 @@ function MediaPlaceholder({ kind, label }: { kind: 'image' | 'video'; label: str
   );
 }
 
-type PhotoVideoFilter = 'all' | 'photo' | 'video';
+type PhotoVideoFilter = 'photo' | 'video';
 
 function PhotoVideoLayout() {
-  const [filter, setFilter] = useState<PhotoVideoFilter>('all');
-  const showPhoto = filter === 'all' || filter === 'photo';
-  const showVideo = filter === 'all' || filter === 'video';
+  const [filter, setFilter] = useState<PhotoVideoFilter>('photo');
+  const [open, setOpen] = useState<string | null>(null);
+  const showPhoto = filter === 'photo';
+  const showVideo = filter === 'video';
+
+  // Switching sets closes whatever was open — its tile is gone.
+  useEffect(() => setOpen(null), [filter]);
+
+  // A click anywhere outside the open still closes it. Clicking another one
+  // fires this first and its own onClick second, so the grid simply switches.
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: PointerEvent) => {
+      if (!(e.target as HTMLElement).closest?.('[data-photo-open]')) setOpen(null);
+    };
+    document.addEventListener('pointerdown', onDown);
+    return () => document.removeEventListener('pointerdown', onDown);
+  }, [open]);
+
+  // The row spans below are measured from the grid's resolved columns, so the
+  // responsive counts stay in the class list. A callback ref, because the grid
+  // only exists under the Photo filter.
+  const [gridEl, setGridEl] = useState<HTMLDivElement | null>(null);
+  const [tracks, setTracks] = useState({ column: 0, full: 0, count: 0 });
+  useLayoutEffect(() => {
+    if (!gridEl) return;
+    const measure = () => setTracks(masonryTracks(gridEl));
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(gridEl);
+    return () => ro.disconnect();
+  }, [gridEl]);
 
   return (
     <div className="rounded-3xl bg-[#111111] p-3 ring-1 ring-white/10 sm:p-5">
-      {/* Filter bar: ALL stays left (as before); Photo · Video sits centred.
-          On narrow screens they stack in normal flow instead of overlapping. */}
+      {/* Filter bar — Photo · Video, centred. */}
       <div className="relative mb-4 flex flex-wrap items-center justify-center gap-2">
-        <button
-          type="button"
-          onClick={() => setFilter('all')}
-          className={`rounded-full px-6 py-2 text-xs font-semibold uppercase tracking-widest transition-colors sm:absolute sm:left-0 ${
-            filter === 'all' ? 'bg-white text-black' : 'bg-white/10 text-white/60 hover:text-white'
-          }`}
-        >
-          All
-        </button>
         <div className="flex overflow-hidden rounded-full bg-white/10">
           {(
             [
@@ -455,22 +543,52 @@ function PhotoVideoLayout() {
       <div className="flex flex-col gap-3">
         {showPhoto &&
           (allPhotos.length ? (
-            // Columns, not a grid: the shoots run about four portraits to every
-            // landscape, and a single tile aspect would crop most of them badly.
-            // In a column layout each still keeps its own shape and the masonry
-            // falls out of the flow for free.
-            <div className="columns-2 gap-3 md:columns-3 lg:columns-4 [&>*]:mb-3">
-              {allPhotos.map((photo) => (
-                <Image
-                  key={photo.src}
-                  src={photo.src}
-                  alt={`${photo.set} — építészeti fotó`}
-                  width={photo.width}
-                  height={photo.height}
-                  sizes="(min-width: 1024px) 22vw, (min-width: 768px) 30vw, 45vw"
-                  className="block h-auto w-full bg-white/[0.03]"
-                />
-              ))}
+            // A masonry grid rather than CSS columns: the shoots run about four
+            // portraits to every landscape, so every still keeps its own shape,
+            // and a real grid is what lets one of them open across the rest.
+            <div
+              ref={setGridEl}
+              style={{ gridAutoRows: '1px', columnGap: MASONRY_GAP, rowGap: 0 }}
+              className="grid grid-cols-2 items-start md:grid-cols-3 lg:grid-cols-4"
+            >
+              {allPhotos.map((photo) => {
+                const isOpen = open === photo.src;
+                return (
+                  <motion.button
+                    key={photo.src}
+                    type="button"
+                    layout
+                    {...(isOpen ? { 'data-photo-open': true } : {})}
+                    onClick={() => setOpen(isOpen ? null : photo.src)}
+                    transition={morphSpring}
+                    aria-expanded={isOpen}
+                    style={{
+                      gridRowEnd: `span ${masonryRowSpan(
+                        photo.width,
+                        photo.height,
+                        isOpen ? tracks.full : tracks.column,
+                      )}`,
+                      marginBottom: MASONRY_GAP,
+                    }}
+                    className={`block w-full overflow-hidden bg-white/[0.03] ${
+                      isOpen ? 'col-span-full' : ''
+                    }`}
+                  >
+                    <Image
+                      src={photo.src}
+                      alt={`${photo.set} — építészeti fotó`}
+                      width={photo.width}
+                      height={photo.height}
+                      sizes={
+                        isOpen
+                          ? '(min-width: 768px) 90vw, 92vw'
+                          : '(min-width: 1024px) 22vw, (min-width: 768px) 30vw, 45vw'
+                      }
+                      className="block h-auto w-full"
+                    />
+                  </motion.button>
+                );
+              })}
             </div>
           ) : (
             <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
@@ -512,46 +630,34 @@ function PhotoVideoLayout() {
 }
 
 /**
- * The "04 Grafika" content: ALL keeps its original left position while the
- * Plan · Axonometry · Sketch group is centred. Each category has 3 image slots;
- * ALL shows every category stacked. Swap a placeholder for real media by
- * rendering an <img> in place of <MediaPlaceholder>.
+ * The "04 Grafikai tervezés" content: Plan · Axonometry · Motion Diagram,
+ * centred, one set at a time. The drawings are square, so the grid is too —
+ * nothing is cropped at any column count. The motion diagrams are the two
+ * concept animations, re-encoded from GIF and looping silently.
  */
-const GRAPHICS_SLOTS = 3;
-
 const GRAPHICS_FILTERS = [
   { id: 'plan', label: 'Plan' },
   { id: 'axonometry', label: 'Axonometry' },
-  { id: 'sketch', label: 'Sketch' },
+  { id: 'motion', label: 'Motion Diagram' },
 ] as const;
 
-type GraphicsFilter = 'all' | (typeof GRAPHICS_FILTERS)[number]['id'];
+type GraphicsFilter = (typeof GRAPHICS_FILTERS)[number]['id'];
 
 function GraphicsLayout() {
-  const [filter, setFilter] = useState<GraphicsFilter>('all');
-  const visible = GRAPHICS_FILTERS.filter((f) => filter === 'all' || filter === f.id);
+  const [filter, setFilter] = useState<GraphicsFilter>('plan');
+  const stills = filter === 'plan' ? graphicPlans : filter === 'axonometry' ? graphicAxonometries : [];
 
   return (
     <div className="rounded-3xl bg-[#111111] p-3 ring-1 ring-white/10 sm:p-5">
-      {/* Filter bar: ALL stays left (as before); the category group sits centred.
-          On narrow screens they stack in normal flow instead of overlapping. */}
+      {/* Filter bar — the three sets, centred. */}
       <div className="relative mb-4 flex flex-wrap items-center justify-center gap-2">
-        <button
-          type="button"
-          onClick={() => setFilter('all')}
-          className={`rounded-full px-6 py-2 text-xs font-semibold uppercase tracking-widest transition-colors sm:absolute sm:left-0 ${
-            filter === 'all' ? 'bg-white text-black' : 'bg-white/10 text-white/60 hover:text-white'
-          }`}
-        >
-          All
-        </button>
         <div className="flex overflow-hidden rounded-full bg-white/10">
           {GRAPHICS_FILTERS.map((f) => (
             <button
               key={f.id}
               type="button"
               onClick={() => setFilter(f.id)}
-              className={`px-6 py-2 text-xs font-semibold uppercase tracking-widest transition-colors ${
+              className={`px-4 py-2 text-xs font-semibold uppercase tracking-widest transition-colors sm:px-6 ${
                 filter === f.id ? 'bg-white text-black' : 'text-white/60 hover:text-white'
               }`}
             >
@@ -561,15 +667,42 @@ function GraphicsLayout() {
         </div>
       </div>
 
-      <div className="flex flex-col gap-3">
-        {visible.map((f) => (
-          <div key={f.id} className="grid grid-cols-2 gap-3 md:grid-cols-3">
-            {Array.from({ length: GRAPHICS_SLOTS }, (_, i) => (
-              <MediaPlaceholder key={`${f.id}-${i}`} kind="image" label={`${f.label} ${pad(i + 1)}`} />
-            ))}
-          </div>
-        ))}
-      </div>
+      {filter === 'motion' ? (
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          {graphicMotion.map((clip) => (
+            <video
+              key={clip.src}
+              src={clip.src}
+              poster={clip.poster}
+              width={clip.width}
+              height={clip.height}
+              // A diagram, not a film: it explains itself by running, so it
+              // runs — silently, on loop, with no chrome in the way.
+              autoPlay
+              muted
+              loop
+              playsInline
+              preload="metadata"
+              aria-label="Koncepció diagram"
+              className="block h-auto w-full bg-white"
+            />
+          ))}
+        </div>
+      ) : (
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
+          {stills.map((still) => (
+            <Image
+              key={still.src}
+              src={still.src}
+              alt="Grafikai terv"
+              width={still.width}
+              height={still.height}
+              sizes="(min-width: 768px) 30vw, 46vw"
+              className="block h-auto w-full bg-white"
+            />
+          ))}
+        </div>
+      )}
     </div>
   );
 }

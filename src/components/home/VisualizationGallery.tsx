@@ -6,6 +6,7 @@ import Image from 'next/image';
 import { motion } from 'framer-motion';
 import { vizAnimations, vizPanoramas, vizStills } from '@/content/visualization';
 import { morphSpring } from '@/lib/motion';
+import { MASONRY_GAP, masonryRowSpan } from '@/lib/masonry';
 
 /** WebGL: it can't render on the server, and three.js has no business in the
  *  page bundle until a panorama is actually opened. */
@@ -21,23 +22,6 @@ const FILTERS: { id: Filter; label: string }[] = [
   { id: 'panoramic', label: 'Panoramic' },
   { id: 'animation', label: 'Animation' },
 ];
-
-/** Gap between stills, in px — matched by the row unit below, not by `gap-*`. */
-const GAP = 12;
-
-/**
- * The stills keep their own proportions, so a plain grid row would end ragged:
- * the shorter of the two renders leaves dead space under it until the next row.
- * This is the row-span trick instead — the grid gets 1px rows and no row gap,
- * and every tile claims exactly as many of them as it is tall (plus its own
- * bottom margin, which is where the gap comes from). Each column then packs
- * against whatever is above it in that column alone, while the two columns stay
- * on the same vertical rails. An opened tile still spans both.
- */
-function rowSpan(width: number, height: number, boxWidth: number) {
-  if (!boxWidth) return 1;
-  return Math.max(1, Math.ceil((boxWidth * (height / width)) + GAP));
-}
 
 
 /**
@@ -72,7 +56,7 @@ export function VisualizationGallery() {
     ro.observe(gridEl);
     return () => ro.disconnect();
   }, [gridEl]);
-  const colWidth = gridWidth ? (gridWidth - GAP) / 2 : 0;
+  const colWidth = gridWidth ? (gridWidth - MASONRY_GAP) / 2 : 0;
 
   // A click anywhere outside the open tile closes it. Clicking another tile
   // fires this first and its own onClick second, so the grid simply switches.
@@ -112,7 +96,7 @@ export function VisualizationGallery() {
           // height, so nothing is rounded up into dead space. `items-start`
           // keeps a tile from being stretched to its row, which would override
           // the aspect ratio.
-          style={{ gridAutoRows: '1px', columnGap: GAP, rowGap: 0 }}
+          style={{ gridAutoRows: '1px', columnGap: MASONRY_GAP, rowGap: 0 }}
           className="grid grid-cols-2 items-start"
         >
           {vizStills.map((still) => {
@@ -130,12 +114,12 @@ export function VisualizationGallery() {
                 // has anything to crop — opening only widens the render.
                 style={{
                   aspectRatio: `${still.width} / ${still.height}`,
-                  gridRowEnd: `span ${rowSpan(
+                  gridRowEnd: `span ${masonryRowSpan(
                     still.width,
                     still.height,
                     isOpen ? gridWidth : colWidth,
                   )}`,
-                  marginBottom: GAP,
+                  marginBottom: MASONRY_GAP,
                 }}
                 className={`relative block w-full overflow-hidden bg-white/[0.03] ${
                   isOpen ? 'col-span-2' : ''

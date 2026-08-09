@@ -3,6 +3,9 @@ export interface ServiceItem {
   label: string;
   /** Heading inside the opened panel. Falls back to the label. */
   title?: string;
+  /** Copy inside the opened panel. Falls back to the category's own blurb,
+   *  which is what every item showed before any of them had its own. */
+  blurb?: string;
   /** Card artwork. Also the poster frame when `video` is set; without either
    *  the card falls back to a plain plate. */
   image?: string;
@@ -48,6 +51,8 @@ export const services: Service[] = [
       {
         label: 'Kültéri',
         title: 'Kültéri látványterv',
+        blurb:
+          'Építészeti vízió életre keltése. Épületek formavilágának, homlokzati kialakításának, anyaghasználatának, és környezetének, atmoszférájának bemutatásával.',
         image: `${MEDIA}/kulteri.webp`,
         panelImages: [`${MEDIA}/kulteri-01.webp`, `${MEDIA}/kulteri-02.webp`],
       },
