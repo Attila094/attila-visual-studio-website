@@ -43,7 +43,7 @@ function buildMailto(email: string, picks: QuickPick[], from: string, note: stri
 type SendState = 'idle' | 'sending' | 'sent' | 'error';
 
 const MESSAGES: Record<string, string> = {
-  'invalid-email': 'Adj meg egy érvényes e-mail címet.',
+  'no-contact': 'Add meg, hol érünk el.',
   'no-picks': 'Válassz legalább egy szolgáltatást.',
   'rate-limited': 'Túl sok küldés egymás után. Próbáld újra pár perc múlva.',
   'send-failed': 'A küldés nem sikerült. Írj közvetlenül: ',
@@ -55,10 +55,11 @@ const MESSAGES: Record<string, string> = {
  * tiles as soon as the first service is picked.
  *
  * The basket on the left is the picks themselves — each tile carries the ✕ that
- * drops it — then the reply address and the note, then KÜLDÉS. There is no
- * server behind this site, so sending hands the assembled message to the
- * visitor's own mail client; the address they type travels in the body as the
- * reply address.
+ * drops it — then the reply address and the note, then KÜLDÉS. Sending posts
+ * the summary to /api/contact, which mails it to the studio with the visitor's
+ * address in Reply-To. A deployment with no mail key answers 501 and the same
+ * summary is handed to the visitor's own mail client instead, so the button is
+ * never dead.
  */
 export function QuickContactForm({
   picks,
@@ -92,9 +93,12 @@ export function QuickContactForm({
   }, [picks.length]);
 
   async function send() {
-    if (!/^\S+@\S+\.\S+$/.test(from.trim())) {
+    // Anything at all, but not nothing: what goes in this field travels as
+    // text, so a phone number or a mistyped address still reaches the studio.
+    // Only an empty one is refused, because that is an enquiry with no way back.
+    if (!from.trim()) {
       setInvalid(true);
-      setError(MESSAGES['invalid-email']);
+      setError(MESSAGES['no-contact']);
       setState('error');
       return;
     }
@@ -219,7 +223,11 @@ export function QuickContactForm({
         <div className="flex min-w-0 flex-1 flex-col gap-3">
           <div className="flex items-center gap-3">
             <input
-              type="email"
+              // Text, not `email`: what is typed here travels as text, so the
+              // field must not claim a shape it no longer enforces. The email
+              // keyboard and autofill stay — an address is still what most
+              // people will reach for.
+              type="text"
               inputMode="email"
               autoComplete="email"
               value={from}

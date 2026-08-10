@@ -22,9 +22,20 @@ import { NextResponse } from 'next/server';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-const TO = process.env.CONTACT_TO ?? 'attilakovacs094@gmail.com';
+/**
+ * An environment variable that is present but blank is not a value.
+ *
+ * `.env` files carry the optional keys as empty placeholders — that is what
+ * `.env.example` asks for — and `??` falls back only on null or undefined, so
+ * a blank one would be passed on as the literal empty string. That is exactly
+ * what happened: Resend answered 422, "Invalid `to` field", because it had been
+ * handed nothing at all to send to.
+ */
+const env = (name: string) => process.env[name]?.trim() || undefined;
+
+const TO = env('CONTACT_TO') ?? 'attilakovacs094@gmail.com';
 /** Resend's shared sandbox sender until a domain of your own is verified. */
-const FROM = process.env.CONTACT_FROM ?? 'Attila Visual Studio <onboarding@resend.dev>';
+const FROM = env('CONTACT_FROM') ?? 'Attila Visual Studio <onboarding@resend.dev>';
 
 const MAX_PICKS = 30;
 const MAX_NOTE = 2000;
@@ -94,10 +105,19 @@ export async function POST(req: Request) {
   // 200 so it learns nothing.
   if (clean(website, 100)) return NextResponse.json({ ok: true });
 
+  // Whatever the visitor typed to be reached by. Content, not routing: it is
+  // written into the message the same way the description is, so a phone
+  // number, a company name or an address with a typo in it all still arrive.
+  // Something is required — an enquiry with no way back is a dead end — but
+  // what that something looks like is not this endpoint's business.
   const from = clean(email, 254);
-  if (!EMAIL_RE.test(from)) {
-    return NextResponse.json({ error: 'invalid-email' }, { status: 400 });
+  if (!from) {
+    return NextResponse.json({ error: 'no-contact' }, { status: 400 });
   }
+  // Set only when what was typed really is an address. Resend rejects the
+  // whole send on a malformed Reply-To, and a typo in a free-text field must
+  // never be what costs the studio the enquiry.
+  const replyTo = EMAIL_RE.test(from) ? from : undefined;
 
   const list: Pick[] = Array.isArray(picks)
     ? picks
@@ -122,7 +142,7 @@ export async function POST(req: Request) {
     ...groups.flatMap(([category, labels]) => [`${category}:`, ...labels.map((l) => `  — ${l}`)]),
     '',
     ...(description ? ['A projekt rövid leírása:', description, ''] : []),
-    `Válaszcím: ${from}`,
+    `Megadott elérhetőség: ${from}`,
   ].join('\n');
 
   const html = `<div style="font-family:system-ui,-apple-system,Segoe UI,sans-serif;font-size:14px;line-height:1.6;color:#111">
@@ -141,7 +161,11 @@ ${
     ? `<p><strong>A projekt rövid leírása</strong><br>${escapeHtml(description).replace(/\n/g, '<br>')}</p>`
     : ''
 }
-<p><strong>Válaszcím</strong><br><a href="mailto:${escapeHtml(from)}">${escapeHtml(from)}</a></p>
+<p><strong>Megadott elérhetőség</strong><br>${
+  // Only linked when it is actually an address — a mailto: wrapped around a
+  // phone number is a link that goes nowhere.
+  replyTo ? `<a href="mailto:${escapeHtml(from)}">${escapeHtml(from)}</a>` : escapeHtml(from)
+}</p>
 </div>`;
 
   const ip =
@@ -160,8 +184,10 @@ ${
     body: JSON.stringify({
       from: FROM,
       to: [TO],
-      // The whole point: replying in the studio's inbox goes to the visitor.
-      reply_to: from,
+      // When it is a real address, replying in the studio's inbox goes
+      // straight to the visitor. When it isn't, the field is simply absent and
+      // the message still carries what they typed.
+      ...(replyTo ? { reply_to: replyTo } : {}),
       subject,
       text,
       html,
