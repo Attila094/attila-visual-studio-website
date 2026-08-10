@@ -478,6 +478,27 @@ export function HeroImageSequence() {
 
       const s = run.current;
       const now = performance.now();
+
+      /**
+       * The `segStart` that puts the current segment's crossing exactly at
+       * progress `p` — i.e. what to set the clock to so the movement carries on
+       * from `p` instead of starting the segment over.
+       *
+       * Every pause lands ON a phase boundary when the sequence has played
+       * itself into one, so this is normally just `now`. It is not when the
+       * autoplay picks the sequence up mid-segment: the visitor's own scroll to
+       * the dock carries progress past the first boundary, so the first pause
+       * fires part-way through a crossing that is already under way. Restarting
+       * that crossing would run progress BACKWARDS — the image springing back to
+       * full size and shrinking a second time.
+       */
+      const clockFor = (p: number) => {
+        const from = P[s.segIndex];
+        const to = P[s.segIndex + 1];
+        const t = Math.min(1, Math.max(0, (p - from) / (to - from)));
+        return now - t * GROW_MS;
+      };
+
       // The logo is home once the scroll has passed the dock's end. Zero until
       // <HeroExperience> has measured it, which reads as "already docked" —
       // the right answer for any page that has no hero logo to wait for.
@@ -510,9 +531,10 @@ export function HeroImageSequence() {
         // choreography while the images stood still. Pinning also means a hold
         // costs no scroll at all, which keeps the mapping below honest.
         if (window.scrollY !== s.lockY) window.scrollTo(0, s.lockY);
-        // The next stretch of movement is timed from when the pause ENDS, so
-        // its clock stays at zero for as long as this one lasts.
-        s.segStart = now;
+        // Movement is timed from when the pause ENDS, so the clock is held
+        // still for as long as this one lasts — at wherever the pause caught
+        // the crossing, which is not always its start.
+        s.segStart = clockFor(s.eff);
       } else {
         let y = window.scrollY;
 
@@ -531,9 +553,7 @@ export function HeroImageSequence() {
             // Picked up from wherever the visitor's own scroll reached, not
             // from the start of that window — otherwise the page would jerk
             // backwards at the very moment it took over.
-            const from = P[s.segIndex];
-            const to = P[s.segIndex + 1];
-            s.segStart = now - ((p0 - from) / (to - from)) * GROW_MS;
+            s.segStart = clockFor(p0);
           }
           if (s.auto === 'running') {
             const from = P[s.segIndex];

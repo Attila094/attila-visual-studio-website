@@ -9,9 +9,9 @@
  */
 
 /** One caption line's type-in. */
-export const TYPE_MS = 3000;
+export const TYPE_MS = 2000;
 /** The beat between the two lines of a pair, before the second starts. */
-export const CAPTION_DWELL_MS = 1000;
+export const CAPTION_DWELL_MS = 500;
 /** How long the newest line stands at full strength once it has finished… */
 export const DWELL_MS = 1000;
 /** …and how long it then takes to settle back into the stack. */
@@ -25,10 +25,10 @@ export const FADE_OUT_MS = 2000;
  * the sequence moves to; under a manual scroll it is only the width of the
  * window the movement is spread across.
  */
-export const GROW_MS = 2000;
+export const GROW_MS = 1500;
 /** Dead air after a caption has settled into the stack, before the next image
  *  begins to expand. */
-export const BEFORE_NEXT_MS = 1000;
+export const BEFORE_NEXT_MS = 500;
 
 /**
  * How long the sequence pauses on an image carrying `lines` captions: long
