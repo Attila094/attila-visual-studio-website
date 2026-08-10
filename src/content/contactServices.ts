@@ -9,7 +9,7 @@ export interface ContactCategory {
   index: string;
   /** Tile heading. */
   label: string;
-  /** Cover art, kept from the original ten-tile layout. */
+  /** Cover art. */
   image: string;
   /** The `Service.id` whose items open inside this tile. */
   serviceId: string;
@@ -37,7 +37,7 @@ export const contactCategories: ContactCategory[] = [
   {
     index: '04',
     label: 'Fotózás & Videózás',
-    image: '/projects/sequence/helikon-01.webp',
+    image: '/media/photo/pecs-buday/06.webp',
     serviceId: 'foto-video',
   },
 ];

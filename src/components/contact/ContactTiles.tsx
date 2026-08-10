@@ -116,7 +116,7 @@ function ServiceTile({
 function TileFace({ category }: { category: ContactCategory }) {
   return (
     <>
-      <span className="relative block aspect-[3/4] overflow-hidden rounded-2xl bg-white/5">
+      <span className="relative block aspect-[3/4] overflow-hidden rounded-2xl bg-white/5 [container-type:inline-size]">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src={category.image}
@@ -125,13 +125,29 @@ function TileFace({ category }: { category: ContactCategory }) {
           decoding="async"
           className="absolute inset-0 h-full w-full object-cover transition-transform duration-500 ease-out group-hover:scale-[1.06]"
         />
-        <span aria-hidden className="absolute inset-0 bg-gradient-to-b from-black/55 to-transparent" />
-        <span className={`${bebas.className} absolute left-3 top-2 text-lg tabular-nums text-white`}>
+        {/* The scrim is the number's legibility and nothing else's — the heading
+            sits below the picture, outside this box — so it darkens whichever
+            end the number stands at. Bottom, now: one of these covers is a
+            bright interior whose lower edge is a near-white rug, and the
+            numeral would otherwise be white on white. */}
+        <span aria-hidden className="absolute inset-0 bg-gradient-to-t from-black/55 to-transparent" />
+        <span
+          // Sized against the tile rather than the viewport. The row is two
+          // columns wide on a phone and four from `sm`, so a tile is at its
+          // NARROWEST just past that breakpoint, not on the smallest screen —
+          // a fixed size would be right at one width and wrong at both others.
+          // The ceiling is the size asked for, on a full-width desktop tile.
+          style={{ fontSize: 'clamp(3rem, 44cqw, 9rem)' }}
+          className={`${bebas.className} absolute bottom-2 left-3 leading-none tabular-nums text-white/25`}
+        >
           {category.index}
         </span>
       </span>
       <span
-        className={`${bebas.className} mt-3 block break-words text-base uppercase leading-[0.95] tracking-wide text-white transition-colors group-hover:text-white/60 sm:text-lg`}
+        // `pl-3` to the number's `left-3` above: the heading starts on the same
+        // line the numeral does, so the two read as one column rather than the
+        // title hanging off the edge of the picture.
+        className={`${bebas.className} mt-3 block break-words pl-3 text-base uppercase leading-[0.95] tracking-wide text-white transition-colors group-hover:text-white/60 sm:text-lg`}
       >
         {category.label}
       </span>
