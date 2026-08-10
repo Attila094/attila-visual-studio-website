@@ -82,8 +82,4 @@ export const vizAnimations: VizAnimation[] = [
     src: '/media/viz/animation/helikon-cover.mp4',
     poster: '/media/viz/animation/helikon-cover.webp',
   },
-  {
-    src: '/media/viz/animation/rad-exteriors.mp4',
-    poster: '/media/viz/animation/rad-exteriors.webp',
-  },
 ];
