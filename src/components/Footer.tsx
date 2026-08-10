@@ -26,7 +26,7 @@ const menu = [
 export function Footer() {
   return (
     <footer className="border-t border-white/15 text-white/80">
-      <div className="mx-auto grid max-w-shell grid-cols-1 gap-10 px-5 py-14 sm:px-8 md:grid-cols-3 md:items-start md:gap-8">
+      <div className="mx-auto flex max-w-shell flex-col gap-10 px-5 py-14 sm:px-8 md:flex-row md:items-start md:justify-between md:gap-8">
         {/* Bottom left — social links. All five stay on one line on a phone:
             they are set smaller there and spread across the column, which is
             what keeps them off a second row at 320px. */}
@@ -46,10 +46,26 @@ export function Footer() {
           })}
         </div>
 
-        {/* Bottom center — two lists side by side. Centred on a phone, where
-            the three blocks stack and a left edge has nothing to line up with;
-            left-aligned again from `md`, where they sit in their columns. */}
-        <div className="grid grid-cols-2 gap-8 text-center md:text-left">
+        {/* Bottom right — the three lists as one block hung off the right edge,
+            reading Menü, Szolgáltatások, Kapcsolat from the right.
+
+            On a phone they keep the shape they have always had: the two lists
+            side by side, the email spanning both underneath. That is why
+            Kapcsolat leads in the source and is ordered back to the end there —
+            source order is what puts it leftmost of the three from `md`, and
+            `order-last` is what keeps it under them on a narrow screen. Centred
+            while stacked, where a left edge has nothing to line up with. */}
+        <div className="grid grid-cols-2 gap-8 text-center md:flex md:gap-12 md:text-left">
+          <div className="order-last col-span-2 md:order-none md:col-auto">
+            <p className="mb-3 text-xs uppercase tracking-[0.15em] text-white/45">Kapcsolat</p>
+            <a
+              href={`mailto:${EMAIL}`}
+              className="text-sm transition-colors hover:text-white/60"
+            >
+              {EMAIL}
+            </a>
+          </div>
+
           <div>
             <p className="mb-3 text-xs uppercase tracking-[0.15em] text-white/45">
               Szolgáltatások
@@ -85,17 +101,6 @@ export function Footer() {
               ))}
             </ul>
           </div>
-        </div>
-
-        {/* Bottom right — contact email. Centred on a phone with the rest. */}
-        <div className="text-center md:text-right">
-          <p className="mb-3 text-xs uppercase tracking-[0.15em] text-white/45">Kapcsolat</p>
-          <a
-            href={`mailto:${EMAIL}`}
-            className="text-sm transition-colors hover:text-white/60"
-          >
-            {EMAIL}
-          </a>
         </div>
       </div>
 
