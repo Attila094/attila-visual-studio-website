@@ -64,14 +64,40 @@ export function MainLayout() {
       // No z-index here on purpose: a positioned element with one creates a
       // stacking context that would trap this section relative to the fixed
       // sequence stage (z-30), which is what paints the tiles.
-      // The bottom padding belongs to the gallery, not to the tile row: with
-      // the gallery closed it is space between the tiles and the footer with
-      // nothing in it, so it goes with the gallery it was holding open.
+      // Two shapes, depending on whether a gallery is open.
+      //
+      // Closed, from `lg` — where the five tiles finally sit on one row — the
+      // band is a whole screen tall and holds the row in the middle of it. The
+      // padding at the top is the fixed chrome's height (`pt-14` ≈ the 55px the
+      // nav pills and the docked logo end at), so the centring happens in what
+      // is left BELOW the header rather than in the whole window: that is what
+      // makes the gap over the tiles equal the gap under them, with the footer
+      // beginning exactly where the band ends. <HeroImageSequence> lands the
+      // page on the top of this band, so the arrangement is what the sequence
+      // resolves into. Narrower than `lg` the tiles wrap onto two or three rows
+      // and a screen-tall band would only strand them.
+      //
+      // Open, the bottom padding comes back and the centring goes: it belongs
+      // to the gallery, not to the tile row — with nothing open it was just
+      // space between the tiles and the footer — and a tile row plus a gallery
+      // is taller than the screen anyway, so there is no middle to sit in.
+      // The scroll margin holds a WORK link's landing clear of the fixed
+      // chrome — but where the band carries that clearance as its own padding,
+      // it must go, and not only because it would double up. It is 96px the
+      // anchor stops SHORT of the band's top, and the sequence ends exactly on
+      // that top: leave it in and a WORK link arrives at 96.5% of the flight,
+      // the images never land, and not one tile is clickable.
       className={`relative scroll-mt-24 bg-black px-4 pt-10 transition-[padding] duration-300 ease-out sm:px-6 ${
-        selectedId ? 'pb-16 sm:pb-20' : 'pb-0'
+        selectedId
+          ? 'pb-16 sm:pb-20'
+          : 'pb-0 lg:flex lg:min-h-svh lg:scroll-mt-0 lg:flex-col lg:justify-center lg:pt-14'
       }`}
     >
-      <div className="mx-auto max-w-shell">
+      {/* `w-full` is load-bearing once the band is a flex column: an item with
+          auto side margins does not stretch to the cross axis, so this would
+          size to its contents — and its contents are the empty placeholders the
+          sequence measures, which would collapse the row to nothing. */}
+      <div className="mx-auto w-full max-w-shell">
         <MainTiles />
 
         <AnimatePresence initial={false}>

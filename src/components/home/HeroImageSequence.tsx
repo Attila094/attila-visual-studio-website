@@ -1,44 +1,54 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { Bebas_Neue } from 'next/font/google';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { Bebas_Neue, Montserrat } from 'next/font/google';
 import { motion, useMotionValue, useTransform, type MotionValue } from 'framer-motion';
 import { heroSequenceImages, type HeroSequenceImage } from '@/content/heroSequence';
 import { mainTiles } from '@/content/mainTiles';
-import { captionGroups } from '@/content/sequenceCaptions';
+import {
+  captionArrivals,
+  captionColor,
+  captionGroups,
+  captionLines,
+  linesBefore,
+} from '@/content/sequenceCaptions';
 import { logoDockEnd, selectedTile } from '@/lib/heroSequenceState';
-import { introAlreadyPlayed } from '@/lib/introPlayed';
-import { WORK_HASH } from '@/lib/anchors';
+import { WORK_ANCHOR } from '@/lib/anchors';
 import { useHeldViewportHeight } from '@/lib/useHeldViewportHeight';
-import { BEFORE_NEXT_MS, GROW_MS, holdMsFor } from '@/lib/sequenceTiming';
+import { PAIR_GAP, PHASES, REVEAL_SPAN, swapStart } from '@/lib/sequenceTiming';
 import { SequenceCaptions } from './SequenceCaptions';
 
 const bebas = Bebas_Neue({ subsets: ['latin', 'latin-ext'], weight: '400' });
+const montserrat = Montserrat({ subsets: ['latin', 'latin-ext'], weight: '800' });
 
 /* ================================================================
    Scroll-driven hero image sequence.
 
    The bouncing ball becomes a rounded image that grows to fill the stage —
-   centred on the page. Each time an image reaches full size the sequence HOLDS
-   while its caption types itself in across the page; the caption then rises to
-   the top edge of the big image, dims, and STAYS, the next one landing beneath
-   it, so the five titles build into a list. Finished images shrink to 15%,
-   dim to 25% and park in a row to the left, their tops flush with the top of
-   the big image. When the fifth image starts to shrink, all five fly to the
-   exact rects laid out by <MainTiles> — brightening back to full on the way —
-   and on arrival they BECOME the tiles: each settles to 95%, takes its title,
-   and turns into a button that opens its projects gallery. The caption stack
-   dissolves over that same flight, since the tiles carry those titles now.
+   centred on the page. As each image reaches full size its caption is revealed
+   across the page, and STAYS, receding as the scroll moves on and the next one
+   lands beneath it, so the titles build into a list. When the fifth image
+   starts to shrink, all five fly to the exact rects laid out by <MainTiles> —
+   brightening back to full on the way — and on arrival they BECOME the tiles:
+   each settles to 95%, takes its title, and turns into a button that opens its
+   projects gallery. The caption stack dissolves over that same flight, since
+   the tiles carry those titles now.
 
-   Progress is MAPPED from the scroll position, not integrated from deltas, so
-   the images scrub cleanly in both directions: scrolling up runs the sequence
-   backwards, and scrolling down picks it up from exactly where it left off.
-   (Integrating deltas can't do that — a scroll up that doesn't rewind still
-   has to be re-scrolled, and the sequence drifts out of step with the page.)
-   The captions come and go with the scroll too; the one-shot parts are the
-   pause at each hold and the captions' type-in effect, both of which happen
-   once per page load and never again. Nothing starts until the hero logo has
-   finished docking — the first hold point falls inside that dock.
+   Where a finished image goes depends on the screen. On a wide one it shrinks
+   to 15% and parks in a row to the left of the big image, tops flush. On a
+   phone there is no gutter to park in, so it keeps its full width instead and
+   loses only its height, becoming a 5:1 strip in a pile under the logo — which
+   is the shape the tiles themselves take there, so the pile is a preview of
+   what the sequence resolves into.
+
+   NOTHING HERE IS ON A CLOCK. Progress is MAPPED from the scroll position, not
+   integrated from deltas and not played out over time, so the sequence scrubs
+   cleanly in both directions: scrolling up runs it backwards, scrolling down
+   picks it up from exactly where it left off, and the page is never pinned or
+   driven. Every position, every opacity and every flip is a pure function of
+   that one number. The single exception is a caption's reveal, a one-shot
+   animation that plays the first time its line is reached; it is latched in
+   <SequenceCaptions> so scrolling back and forth cannot replay it.
    ================================================================ */
 
 /** Ball size in px — must match BallMenu's BALL so the handoff is invisible. */
@@ -64,18 +74,35 @@ const PARKED_RADIUS = 8;
 const TILE_RADIUS = 16; // matches MainTiles' rounded-2xl
 /** Below this width the phone layout applies. Matches Tailwind's `sm`. */
 export const MOBILE_MAX = 640;
-/** On a phone the big image runs at twice the size the gutters would allow,
- *  and the corners come in to 40% of their radius — 34px of rounding reads as
- *  a squircle at that scale. The parked images keep their size and only lose
- *  the rounding. */
-const MOBILE_SLOT_SCALE = 2;
+/** On a phone the corners come in to 40% of their radius — 34px of rounding
+ *  reads as a squircle at that scale. */
 const MOBILE_RADIUS_SCALE = 0.4;
-/** On a phone the parked images shrink to whatever makes all four fit beside
- *  the doubled big image, and the spacing between them halves. */
+/** On a phone the pile's strips sit this far apart, and the big image keeps
+ *  this much clearance from the screen edge. */
 const MOBILE_ROW_GAP = ROW_ITEM_GAP / 2;
 const MOBILE_SIDE_MARGIN = 12;
-/** Never shrink a parked image past this — below it there is nothing to see. */
-const MIN_PARKED = 8;
+/** Where the fixed chrome ends — the nav pills and the docked logo both finish
+ *  at 55px. A caption over an expanded picture is centred in what lies between
+ *  this and the picture's top edge. */
+const HEADER_H = 56;
+/** A phone caption's type size, as a share of the big image's width. */
+const CAPTION_SIZE = 0.065 * 2.5;
+/**
+ * …under a ceiling: no line may take more than this much of the screen's
+ * width. The ceiling is what actually decides the size on a phone. At the size
+ * above, "GRAFIKAI TERVEZÉS" sets 640px wide on a 375px screen — it would hang
+ * a quarter of its length off each edge — so the longest line is what the whole
+ * set is sized from, and they all share one size rather than each finding its
+ * own and reading as a jumble.
+ */
+const CAPTION_SCREEN_FILL = 0.94;
+/** The longest caption there is: what the ceiling above is measured against. */
+const LONGEST_CAPTION = captionLines.reduce((a, b) => (b.length > a.length ? b : a));
+/** The size the hidden probe is set at; the measurement is divided back out of
+ *  it, so only its precision matters. */
+const CAPTION_PROBE_PX = 100;
+/** …and the line box that size sets, as a multiple of it. */
+const CAPTION_LINE = 1.15;
 /** Clearance kept around the tile grid when it is scrolled into view. */
 const TILES_MARGIN = 16;
 /** Scroll runway, in viewport heights. */
@@ -83,10 +110,6 @@ export const RUNWAY_VH = 3;
 /** Progress at which the first image takes over from the bouncing ball. */
 const BALL_HANDOFF = 0.005;
 
-/** How long the page pauses at image `i`, from the lines that image carries. */
-function holdFor(i: number): number {
-  return holdMsFor(captionGroups[i]?.length ?? 1);
-}
 /** Once landed, each image settles from 100% to 95% of its tile. */
 const FINAL_SCALE = 0.95;
 /** Selection, once the images are tiles: picked grows 5%, the rest shrink 5%. */
@@ -95,19 +118,39 @@ const UNSELECTED_SCALE = 0.95;
 
 const N = heroSequenceImages.length; // 5
 
+/** Phase boundaries — shared with the captions, which arrive on them. */
+const P = PHASES;
+/** How many lines each image carries: one, or a pair. */
+const LINES = captionGroups.map((g) => g.length);
 /**
- * Phase boundaries. Image i grows across [P[i], P[i+1]] and shrinks across
- * [P[i+1], P[i+2]], so the last image's shrink is the final phase — which is
- * exactly when every image flies to its MainTile.
+ * Where each image gives way — the moment it starts to shrink AND the next one
+ * starts to grow, since those are one exchange. An image reaches full size on
+ * its phase boundary and then HOLDS there for as long as its caption takes to
+ * write itself: a line's worth of scrolling for one, two for a pair. Nothing
+ * moves out from under a word still being revealed, and nothing new arrives
+ * over one either.
  */
-const P = [0, 0.18, 0.34, 0.5, 0.66, 0.82, 1] as const;
-const FINAL_START = P[N]; // 0.82 — the fifth image begins to shrink
-/** The sequence pauses at each of these — one per fully-grown image. */
-const HOLD_POINTS = [P[1], P[2], P[3], P[4], P[5]];
-/** What a finished image dims to once it has shrunk into the parked row — it is
- *  a marker of where the sequence has been, not something to look at. Full
- *  again by the time it lands on its tile. */
-const PARKED_OPACITY = 0.25;
+const SWAP = LINES.map((n, i) => swapStart(i, n));
+/** The fifth image's shrink is the flight to the tiles, so the last swap is
+ *  where every image sets off for its place in the row. */
+const FINAL_START = SWAP[N - 1];
+/**
+ * Where a two-faced slot turns over: the moment its group's second caption
+ * arrives, so the picture changes with the word. Read from progress rather than
+ * signalled by the captions, now that both are functions of the same scroll.
+ * `null` for a slot with only one line and nothing to turn to.
+ */
+const FLIP_AT: (number | null)[] = captionGroups.map((group, i) =>
+  group.length > 1 ? P[i + 1] + PAIR_GAP : null,
+);
+/** What a finished image dims to once it has shrunk — it is a marker of where
+ *  the sequence has been, not something to look at. Full again by the time it
+ *  lands on its tile. */
+const PARKED_OPACITY = 0.1;
+/** …and what its caption dims to, once it has travelled down with it. Set
+ *  higher than the picture's: a word at a tenth is unreadable where a
+ *  photograph at a tenth is merely faint. */
+const PARKED_TEXT_OPACITY = 0.2;
 /** How long a two-faced slot takes to turn over. */
 const FLIP_MS = 900;
 
@@ -125,26 +168,45 @@ function SlotVideo({
   src,
   poster,
   alt,
-  playing,
+  scrub,
 }: {
   src: string;
   poster?: string;
   alt: string;
-  playing: boolean;
+  /** How far through the clip the scroll has come, 0→1, or null while the slot
+   *  is not showing it. */
+  scrub: MotionValue<number> | null;
 }) {
   const ref = useRef<HTMLVideoElement>(null);
+
   useEffect(() => {
     const el = ref.current;
-    if (!el) return;
-    if (playing) {
-      // Muted is what makes this allowed at all without a click; a rejected
-      // play is nothing worth breaking the page over — the poster stands in.
-      void el.play().catch(() => {});
-    } else {
-      el.pause();
-      el.currentTime = 0;
-    }
-  }, [playing]);
+    if (!el || !scrub) return;
+    // The clip does not play — it is SCRUBBED. Seeking to a position the
+    // scroll chooses means the picture runs forwards as you go down and
+    // backwards as you come back up, which is what everything else on this
+    // stage does. It stays paused throughout: `play()` and seeking at the same
+    // time fight each other.
+    el.pause();
+    const seek = (t: number) => {
+      const d = el.duration;
+      if (!Number.isFinite(d) || d <= 0) return;
+      const want = Math.min(0.999, Math.max(0, t)) * d;
+      // Seeking is the expensive part, so ask only when the frame would
+      // actually differ — a scroll fires far more often than the clip has
+      // frames to show for it.
+      if (Math.abs(el.currentTime - want) > 1 / 30) el.currentTime = want;
+    };
+    seek(scrub.get());
+    const stop = scrub.on('change', seek);
+    // The duration is unknown until metadata lands; seek again once it is.
+    const onMeta = () => seek(scrub.get());
+    el.addEventListener('loadedmetadata', onMeta);
+    return () => {
+      stop();
+      el.removeEventListener('loadedmetadata', onMeta);
+    };
+  }, [scrub]);
 
   return (
     <video
@@ -161,21 +223,21 @@ function SlotVideo({
   );
 }
 
-/** One face of a slot: a still, or a silent clip played in its place. */
+/** One face of a slot: a still, or a silent clip scrubbed in its place. */
 function SlotFace({
   src,
   poster,
   alt,
-  playing = false,
+  scrub = null,
 }: {
   src: string;
   poster?: string;
   alt: string;
-  /** Only meaningful for a clip: true once the slot is at full size. */
-  playing?: boolean;
+  /** Only meaningful for a clip: where the scroll has reached within it. */
+  scrub?: MotionValue<number> | null;
 }) {
   if (/\.mp4$/i.test(src)) {
-    return <SlotVideo src={src} poster={poster} alt={alt} playing={playing} />;
+    return <SlotVideo src={src} poster={poster} alt={alt} scrub={scrub} />;
   }
   return (
     // eslint-disable-next-line @next/next/no-img-element
@@ -188,12 +250,6 @@ function SlotFace({
       className="absolute inset-0 h-full w-full object-cover"
     />
   );
-}
-
-/** Which of the six windows between phase boundaries progress `p` falls in. */
-function segmentAt(p: number): number {
-  for (let i = 0; i < P.length - 2; i += 1) if (p < P[i + 1]) return i;
-  return P.length - 2;
 }
 
 /** Smoothstep — takes the linear scroll edge off every interpolation. */
@@ -224,9 +280,17 @@ interface Geometry {
   slot: Rect;
   thumb: Rect;
   tiles: Rect[];
-  /** Size, rounding and spacing of a parked image. Carried separately because
-   *  on a phone the slot grows while these shrink to fit beside it. */
+  /** Size, rounding and spacing of a parked image — a small 3:4 thumbnail in
+   *  the row on a wide screen, a full-width 5:1 strip in the pile on a phone. */
   parked: { w: number; h: number; r: number; gap: number };
+  /** True on a phone: finished images lie down in a pile instead of parking in
+   *  a row beside the big image. */
+  piled: boolean;
+  /** Top of the first strip in that pile; it grows downwards from here. */
+  pileTop: number;
+  /** Type size for the phone captions. Fixed at the size the caption had over the
+   *  big image: it MOVES with its picture, it does not shrink with it. */
+  captionSize: number;
 }
 
 const emptyRect = (): Rect => ({ top: 0, left: 0, w: 0, h: 0, r: 0 });
@@ -242,6 +306,16 @@ const emptyRect = (): Rect => ({ top: 0, left: 0, w: 0, h: 0, r: 0 });
  */
 function parkedRect(i: number, kc: number, g: Geometry): Rect {
   const { w, h, r, gap } = g.parked;
+  if (g.piled) {
+    // The pile does not shuffle: image i always owns row i, so the strips read
+    // top to bottom in the order the tiles will, and each one lands in a place
+    // that was empty and waiting rather than shoving its neighbours along.
+    // `kc` is therefore unused here — nothing depends on how many have arrived.
+    // A hairline between rows and nothing else: the five together are meant to
+    // fill the screen, so there is no room to reserve for the captions and
+    // they ride over the strip above instead.
+    return { top: g.pileTop + i * (h + gap), left: g.slot.left, w, h, r };
+  }
   const fromRight = kc - 1 - i;
   const right = g.slot.left - gap - fromRight * (w + gap);
   return { top: g.slot.top, left: right - w, w, h, r };
@@ -251,7 +325,7 @@ function parkedRect(i: number, kc: number, g: Geometry): Rect {
  *  is shrinking, so the row shuffles in step with it. */
 function parkedCount(p: number): number {
   for (let j = 0; j < N - 1; j += 1) {
-    if (p < P[j + 2]) return j + ease(seg(p, P[j + 1], P[j + 2]));
+    if (p < P[j + 2]) return j + ease(seg(p, SWAP[j], P[j + 2]));
   }
   return N - 1;
 }
@@ -262,9 +336,11 @@ function parkedCount(p: number): number {
  * The last image skips the row: its shrink IS the final flight.
  */
 function rectFor(i: number, p: number, g: Geometry): Rect {
-  const growStart = P[i];
+  // Growing takes over exactly where the image before it gave way, so the two
+  // movements are one exchange rather than a dissolve with a gap in it.
+  const growStart = i === 0 ? P[0] : SWAP[i - 1];
   const growEnd = P[i + 1];
-  const shrinkStart = P[i + 1];
+  const shrinkStart = SWAP[i];
   const shrinkEnd = P[i + 2];
   const isLast = i === N - 1;
 
@@ -285,6 +361,116 @@ function rectFor(i: number, p: number, g: Geometry): Rect {
   return lerpRect(parkedRect(i, N - 1, g), tile, ease(seg(p, FINAL_START, 1)));
 }
 
+/**
+ * A phone's caption: the lines belonging to ONE image, standing above it.
+ *
+ * On a wide screen the captions are a single stack set across the big image
+ * (<SequenceCaptions>), because there is room for seven lines at once. A phone
+ * has no such room, so each caption instead belongs to its picture and travels
+ * with it — full strength above the big image in the middle of the page, then
+ * down to the pile with it, dimmed, still standing over it.
+ *
+ * Positioned from the same `rectFor` the image itself uses, so the two cannot
+ * come apart: the caption is bottom-anchored to the image's top edge, which
+ * means a pair grows upwards and a single line sits just above the picture
+ * either way.
+ */
+function PiledCaption({
+  index,
+  progress,
+  geoTick,
+  geo,
+  capSize,
+}: {
+  index: number;
+  progress: MotionValue<number>;
+  geoTick: MotionValue<number>;
+  geo: React.MutableRefObject<Geometry>;
+  /** The caption type size, published by the geometry loop. */
+  capSize: MotionValue<number>;
+}) {
+  const lines = captionGroups[index] ?? [];
+  const base = linesBefore(index);
+
+  /** How far the picture has gone from full size to parked: 0 while it is up,
+   *  1 once it has lain down. The caption dims across the same window, so word
+   *  and picture settle together. */
+  const travel = (p: number) => ease(seg(p, SWAP[index], P[index + 2]));
+
+  /**
+   * The caption has two homes and travels between them as its picture lies
+   * down.
+   *
+   * While the picture is EXPANDED it stands in the gap over it — the band
+   * between the fixed header and the picture's top edge — centred in that gap
+   * both ways, so it reads as a title over the photograph rather than crowding
+   * its edge. Once the picture has PARKED the caption sits on it, centred in
+   * the strip, which is the only place left for it once the five strips share
+   * the screen with nothing between them.
+   */
+  const left = useTransform([progress, geoTick], ([p]: number[]) =>
+    lerp(0, rectFor(index, p, geo.current).left, travel(p)),
+  );
+  const width = useTransform([progress, geoTick], ([p]: number[]) =>
+    lerp(window.innerWidth, rectFor(index, p, geo.current).w, travel(p)),
+  );
+  const top = useTransform([progress, geoTick], ([p]: number[]) => {
+    const g = geo.current;
+    const blockH = lines.length * g.captionSize * CAPTION_LINE;
+    const rect = rectFor(index, p, g);
+    const inGap = HEADER_H + (rect.top - HEADER_H - blockH) / 2;
+    const onStrip = rect.top + (rect.h - blockH) / 2;
+    return lerp(inGap, onStrip, travel(p));
+  });
+  const fontSize = capSize;
+  // Full strength while the picture is up, settling as it shrinks away.
+  const opacity = useTransform(progress, (p) => lerp(1, PARKED_TEXT_OPACITY, travel(p)));
+
+  return (
+    <motion.div
+      aria-hidden
+      style={{ top, left, width, opacity }}
+      className="pointer-events-none absolute flex flex-col items-center"
+    >
+      {lines.map((line, j) => (
+        <PiledCaptionLine
+          key={line}
+          text={line}
+          row={base + j}
+          progress={progress}
+          fontSize={fontSize}
+        />
+      ))}
+    </motion.div>
+  );
+}
+
+/** One of those lines, uncovered by the scroll rather than by a clock. */
+function PiledCaptionLine({
+  text,
+  row,
+  progress,
+  fontSize,
+}: {
+  text: string;
+  row: number;
+  progress: MotionValue<number>;
+  fontSize: MotionValue<number>;
+}) {
+  const clipPath = useTransform(progress, (p) => {
+    const t = seg(p, captionArrivals[row], captionArrivals[row] + REVEAL_SPAN);
+    return `inset(0 ${(1 - t) * 100}% 0 0)`;
+  });
+  return (
+    <motion.p
+      style={{ fontSize, clipPath, color: captionColor(text), lineHeight: CAPTION_LINE }}
+      className={`${montserrat.className} m-0 whitespace-nowrap text-center uppercase tracking-[0.02em]`}
+    >
+      {text}
+    </motion.p>
+  );
+}
+
 export function HeroImageSequence() {
   const progress = useMotionValue(0);
   const geoTick = useMotionValue(0);
@@ -294,29 +480,41 @@ export function HeroImageSequence() {
     thumb: emptyRect(),
     tiles: [],
     parked: { w: 0, h: 0, r: PARKED_RADIUS, gap: ROW_ITEM_GAP },
+    piled: false,
+    pileTop: 0,
+    captionSize: 0,
   });
 
-  // Caption state. Each image adds its line — or its pair — to a list set
-  // across the big image, and nothing is taken away, so `captionIndex` is the
-  // newest group rather than the only one.
-  const [captionIndex, setCaptionIndex] = useState(-1);
-  // True once the last image has begun to shrink: the cue for the whole caption
-  // stack to fade away, over two seconds.
-  const [captionsDone, setCaptionsDone] = useState(false);
-  // Which slots have turned over to their second face. Driven by the captions:
-  // a slot turns when its group moves to its second line, so the picture and
-  // the word can never disagree. Sticky, like the type-in — scrolling back
-  // does not turn it face-up again, since the caption stays too.
-  const [flipped, setFlipped] = useState<boolean[]>(() => heroSequenceImages.map(() => false));
-  const flipSlot = useCallback((i: number) => {
-    setFlipped((prev) => (prev[i] ? prev : prev.map((v, k) => (k === i ? true : v))));
-  }, []);
   // The big image's live rect, published so the caption stack can be set across
   // it and sized to it without re-rendering React.
   const bigTop = useMotionValue(0);
   const bigLeft = useMotionValue(0);
   const bigW = useMotionValue(0);
   const bigH = useMotionValue(0);
+  // The phone caption's type size, published the same way. Read through a
+  // transform of `geo` instead and it comes out stale: it is the one value on
+  // this stage that does not change every frame, so a transform has nothing to
+  // recompute it against and keeps whatever the very first geometry pass —
+  // taken before the logo has docked — happened to produce.
+  const capSize = useMotionValue(0);
+
+  // How wide the longest caption actually sets, in ems of its own size.
+  // Measured, not estimated: a per-character constant is a guess about metrics
+  // only the browser knows, and getting it wrong here either runs the type off
+  // the screen or leaves it needlessly small. Re-read once the webfont has
+  // loaded, since the first measurement is of the fallback face.
+  const capEm = useRef(LONGEST_CAPTION.length * 0.68);
+  const capProbe = useRef<HTMLSpanElement>(null);
+  useLayoutEffect(() => {
+    const el = capProbe.current;
+    if (!el) return;
+    const measure = () => {
+      const w = el.getBoundingClientRect().width;
+      if (w > 0) capEm.current = w / CAPTION_PROBE_PX;
+    };
+    measure();
+    document.fonts?.ready.then(measure).catch(() => {});
+  }, []);
   // True the moment the fifth image reaches its tile — from here the five are
   // the tiles, and clickable.
   const [landed, setLanded] = useState(false);
@@ -327,27 +525,14 @@ export function HeroImageSequence() {
     return selectedTile.on('change', (v) => setSelectedId(v as string | null));
   }, []);
 
-  // `eff` is last frame's progress, kept only to spot a hold being crossed;
-  // `nextHold` never goes back, which is what makes the pauses one-shot;
-  // `lockY` is the scroll position the page is pinned to during a hold.
-  // `auto` is the first visit's self-playing run: 'idle' until the logo has
-  // docked, 'running' while the page is carrying itself, 'off' for good once it
-  // reaches the tiles or the visitor asks for something else. `segIndex` is the
-  // pair of phase boundaries it is currently crossing and `segStart` when that
-  // crossing began.
-  const run = useRef({
-    eff: 0,
-    holdUntil: 0,
-    nextHold: 0,
-    lockY: 0,
-    landed: false,
-    caption: -1,
-    finishing: false,
-    finalEff: 1,
-    auto: 'idle' as 'idle' | 'running' | 'off',
-    segIndex: 0,
-    segStart: 0,
-  });
+  // Last frame's answers, kept only so React is told when one of them actually
+  // changes — the scroll itself is read every frame and drives the motion
+  // values directly, without a render.
+  const run = useRef({ eff: 0, landed: false, piled: false });
+  // Which caption arrangement is in force — one stack across the big image, or
+  // one caption per picture travelling with it. Mirrors the same measurement
+  // the geometry makes, so the two can never disagree about it.
+  const [piled, setPiled] = useState(false);
 
   // The height everything here is measured against, held still while a phone
   // slides its chrome. Mirrored into a ref so the rAF loop below reads the
@@ -358,18 +543,6 @@ export function HeroImageSequence() {
 
   useEffect(() => {
     let raf = 0;
-    // The pause exists to give the caption's type-in room to play. On a repeat
-    // load there is no type-in left, so there is nothing to wait for and the
-    // sequence scrubs freely. Read once, on the client, where storage exists.
-    const firstVisit = !introAlreadyPlayed();
-    const holdMs = firstVisit ? 1 : 0;
-    // …and on that first visit the sequence plays ITSELF, from the moment the
-    // logo docks through to the tile row: the visitor's scroll starts it and
-    // the page takes over from there. Only then. A repeat visit has seen it and
-    // is owed its scrollbar back, and someone who has asked for less movement
-    // is owed it more — the sequence still scrubs by hand for both.
-    const autoplays =
-      firstVisit && !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
     const update = () => {
       raf = 0;
@@ -412,21 +585,38 @@ export function HeroImageSequence() {
       if (mobile) {
         radius = RADIUS * MOBILE_RADIUS_SCALE;
         parkedGap = MOBILE_ROW_GAP;
-        // Doubled, but never wider than the screen or taller than the band.
-        slotW = Math.min(slotW * MOBILE_SLOT_SCALE, vw - 2 * SIDE_MARGIN, band * ASPECT);
+        // As large as the screen allows: the width, or the band if the 3:4 of
+        // it would be taller. No room is set aside for the pile any more — the
+        // big image grows in the MIDDLE of the page and the pile forms at the
+        // top, so the two are laid out independently.
+        slotW = Math.max(120, Math.min(vw - 2 * MOBILE_SIDE_MARGIN, band * ASPECT));
         slotH = slotW / ASPECT;
-        // The doubled image leaves too little gutter for the row at its old
-        // size, so size the parked images to the room that's actually left:
-        // N-1 of them plus the gaps between them and the one against the big
-        // image, inside the left gutter. Never larger than they'd be anyway.
-        const gutter = (vw - slotW) / 2;
-        const room = gutter - MOBILE_SIDE_MARGIN - (N - 1) * parkedGap;
-        parkedW = Math.max(MIN_PARKED, Math.min(parkedW, room / (N - 1)));
+        // Full width, and only the height given up.
+        parkedW = slotW;
       }
-      const parkedH = parkedW / ASPECT;
+      // Phone captions. Sized off the big image's width so the longest line
+      // clears it.
+      const captionSize = mobile
+        ? Math.min(slotW * CAPTION_SIZE, (vw * CAPTION_SCREEN_FILL) / capEm.current)
+        : 0;
+      capSize.set(captionSize);
 
-      // Centred vertically in the band too, so a width clamp doesn't leave the
-      // image hanging off the top of a tall band of dead space.
+      // A phone's five strips share the whole band between them — the pile
+      // fills the screen from under the header to where the footer starts,
+      // with only a hairline between one strip and the next. Their height is
+      // therefore whatever is left over divided five ways, not a ratio of
+      // their width: the screen decides it, not the picture.
+      // Nothing is reserved above the strips any more: a caption ends up ON
+      // its own picture rather than over the one above, so the five share the
+      // whole band between them with only a hairline in between.
+      const parkedH = mobile
+        ? Math.max(24, (band - (N - 1) * parkedGap) / N)
+        : parkedW / ASPECT;
+
+      // Centred in what is left below the logo — on a phone that is the middle
+      // of the page, which is where the image grows to and shrinks back from.
+      // On a wide screen it does the same job of stopping a width clamp from
+      // leaving the image hanging off the top of a tall band of dead space.
       const top = topMin + Math.max(0, (band - slotH) / 2);
       const slot: Rect = { top, left: (vw - slotW) / 2, w: slotW, h: slotH, r: radius };
       bigTop.set(slot.top);
@@ -463,180 +653,49 @@ export function HeroImageSequence() {
           r: mobile ? PARKED_RADIUS * MOBILE_RADIUS_SCALE : PARKED_RADIUS,
           gap: parkedGap,
         },
+        piled: mobile,
+        pileTop: topMin,
+        captionSize,
       };
 
       // --- Progress, with holds -------------------------------------------
       // The sequence must finish while the tiles are on screen, so progress
-      // ends where they sit halfway down the viewport — which also leaves the
-      // page a couple of hundred pixels of scroll to spare, so the landing can
-      // never be stranded just short of the bottom.
+      // ends where they are — which also leaves the page a couple of hundred
+      // pixels of scroll to spare, so the landing can never be stranded just
+      // short of the bottom.
       let end = RUNWAY_VH * vh;
       if (tiles.length) {
         const tileDocTop = window.scrollY + tiles[0].top;
         end = Math.max(vh * 0.5, tileDocTop - vh * 0.5);
+
+        // Where <MainLayout> gives the tile row a screen-tall band to sit in
+        // the middle of, the landing is simply that band filling the screen:
+        // stop on its top edge and the arrangement it lays out — header, equal
+        // air, tiles, equal air, footer — is what the sequence resolves into.
+        // Asked of the band itself rather than of a breakpoint, so the two
+        // cannot disagree about which layout is in force.
+        const band = document.getElementById(WORK_ANCHOR);
+        const bandRect = band?.getBoundingClientRect();
+        if (bandRect && bandRect.height >= vh - 1) {
+          end = Math.max(vh * 0.5, window.scrollY + bandRect.top);
+        }
       }
 
       const s = run.current;
-      const now = performance.now();
-
-      /**
-       * The `segStart` that puts the current segment's crossing exactly at
-       * progress `p` — i.e. what to set the clock to so the movement carries on
-       * from `p` instead of starting the segment over.
-       *
-       * Every pause lands ON a phase boundary when the sequence has played
-       * itself into one, so this is normally just `now`. It is not when the
-       * autoplay picks the sequence up mid-segment: the visitor's own scroll to
-       * the dock carries progress past the first boundary, so the first pause
-       * fires part-way through a crossing that is already under way. Restarting
-       * that crossing would run progress BACKWARDS — the image springing back to
-       * full size and shrinking a second time.
-       */
-      const clockFor = (p: number) => {
-        const from = P[s.segIndex];
-        const to = P[s.segIndex + 1];
-        const t = Math.min(1, Math.max(0, (p - from) / (to - from)));
-        return now - t * GROW_MS;
-      };
-
-      // The logo is home once the scroll has passed the dock's end. Zero until
-      // <HeroExperience> has measured it, which reads as "already docked" —
-      // the right answer for any page that has no hero logo to wait for.
-      // The pixel of slack matters: the dock ends on a fractional scroll
-      // position (70% of a viewport height) that an integer scroll can land
-      // just short of, and the gate would then never open.
-      const docked = window.scrollY >= logoDockEnd.get() - 1;
-
-      // A WORK link lands on the tile row, which is past the end of the
-      // sequence. The pauses exist to pace a scroll *through* it, and there was
-      // none — left armed they would fire all five at once and pin the page at
-      // the landing for as long as a caption takes to type. Read from the URL
-      // rather than a `hashchange` listener: a same-page hash link is a
-      // `pushState`, which does not fire that event.
-      if (s.nextHold < HOLD_POINTS.length && window.location.hash === WORK_HASH) {
-        s.nextHold = HOLD_POINTS.length;
-        s.holdUntil = 0;
-        // Landing past the sequence means it is over before it began, so the
-        // captions are already finished — without this they would hang over the
-        // tile row and the footer for as long as the page was open.
-        s.finalEff = FINAL_START;
-        // And whatever brought them here — a WORK link clicked mid-run — asked
-        // to be at the tiles, not to watch the sequence get there.
-        s.auto = 'off';
+      if (mobile !== s.piled) {
+        s.piled = mobile;
+        setPiled(mobile);
       }
 
-      if (now < s.holdUntil) {
-        // Held: the PAGE is pinned too, not just the sequence. Letting the page
-        // scroll on during the pause would carry it past the whole
-        // choreography while the images stood still. Pinning also means a hold
-        // costs no scroll at all, which keeps the mapping below honest.
-        if (window.scrollY !== s.lockY) window.scrollTo(0, s.lockY);
-        // Movement is timed from when the pause ENDS, so the clock is held
-        // still for as long as this one lasts — at wherever the pause caught
-        // the crossing, which is not always its start.
-        s.segStart = clockFor(s.eff);
-      } else {
-        let y = window.scrollY;
-
-        // --- Autoplay ------------------------------------------------------
-        // The page moves itself between the pauses, a fixed GROW_MS from one
-        // phase boundary to the next, by scrolling: progress is a function of
-        // the scroll position, so driving the scroll drives everything —
-        // images, parked row, captions, and the runway actually being spent,
-        // which is what leaves the visitor at the tile row rather than back at
-        // the top with a page still to scroll.
-        if (autoplays && s.auto !== 'off') {
-          if (s.auto === 'idle' && docked && y > 0) {
-            s.auto = 'running';
-            const p0 = Math.min(1, Math.max(0, y / end));
-            s.segIndex = segmentAt(p0);
-            // Picked up from wherever the visitor's own scroll reached, not
-            // from the start of that window — otherwise the page would jerk
-            // backwards at the very moment it took over.
-            s.segStart = clockFor(p0);
-          }
-          if (s.auto === 'running') {
-            const from = P[s.segIndex];
-            const to = P[s.segIndex + 1];
-            const t = Math.min(1, (now - s.segStart) / GROW_MS);
-            // Linear in time. The easing belongs to `rectFor`, which already
-            // smoothsteps every window it interpolates; easing here as well
-            // would apply it twice and stall each image at both ends.
-            y = Math.round(end * lerp(from, to, t));
-            if (window.scrollY !== y) window.scrollTo(0, y);
-            if (t >= 1) {
-              if (s.segIndex < P.length - 2) {
-                s.segIndex += 1;
-                s.segStart = now;
-              } else {
-                // Home. The tiles are on screen and the page is the
-                // visitor's again.
-                s.auto = 'off';
-              }
-            }
-          }
-        }
-        // Progress IS the scroll position. Because it's a pure function of `y`,
-        // scrolling up walks the images backwards and scrolling down resumes
-        // from precisely the same frame — no accumulated error either way.
-        const p = Math.min(1, Math.max(0, y / end));
-
-        // The PAUSE is the exception: it fires once per hold point, the first
-        // time progress reaches it, so scrolling back up never re-pauses the
-        // page. (The captions themselves are free to come and go — only their
-        // type-in is one-shot, and that's latched inside <SequenceCaptions>.)
-        // Nothing fires until the logo has finished docking: the first hold
-        // point falls inside the dock, and a caption typing itself in while the
-        // logo is still travelling is two animations over one moment. Held
-        // back, it fires the instant the logo lands.
-        if (docked) {
-          while (s.nextHold < HOLD_POINTS.length && p >= HOLD_POINTS[s.nextHold]) {
-            // An image carrying two lines is pinned for both of them.
-            s.holdUntil = now + (holdMs ? holdFor(s.nextHold) : 0);
-            s.lockY = y;
-            s.nextHold += 1;
-            // Where the last hold caught the page. The final shrink is any
-            // progress past this, which is what the captions leave on. Never
-            // past FINAL_START, though: a page opened already scrolled beyond
-            // the sequence fires all five holds on one frame with `p` at the
-            // very end, and recording that as the mark would set a finish line
-            // the scroll can never cross — leaving the captions on screen for
-            // good. Clamped, that case reads as finished immediately, which it
-            // is. In a scroll through the sequence the fifth hold lands on
-            // FINAL_START anyway, so the clamp changes nothing.
-            if (s.nextHold === HOLD_POINTS.length) s.finalEff = Math.min(p, FINAL_START);
-          }
-        }
-        s.eff = p;
-      }
+      // Progress IS the scroll position, and nothing else. Because it is a pure
+      // function of `y`, scrolling up walks the images backwards and scrolling
+      // down resumes from precisely the same frame — no accumulated error
+      // either way, no state to get out of step, and no moment at which the
+      // page is doing something the hand on the wheel did not ask for.
+      s.eff = Math.min(1, Math.max(0, window.scrollY / end));
 
       progress.set(s.eff);
       geoTick.set(geoTick.get() + 1);
-
-      // Which caption is the newest tracks the scroll in both directions, the
-      // same as the images: the last hold point reached owns the front of the
-      // stack, and the ones before it stay parked above the image.
-      let visible = -1;
-      if (docked) {
-        for (let i = 0; i < HOLD_POINTS.length; i += 1) {
-          if (s.eff >= HOLD_POINTS[i]) visible = i;
-        }
-      }
-      if (visible !== s.caption) {
-        s.caption = visible;
-        setCaptionIndex(visible);
-      }
-      // The last image starts to shrink when its own hold lets the page go
-      // again — FINAL_START alone is not enough, because that progress is also
-      // the fifth hold POINT, and the fade would start on the very frame the
-      // last line began typing. Past the last hold, with the pause spent, is
-      // the moment the shrink actually begins.
-      const finishing =
-        s.nextHold >= HOLD_POINTS.length && now >= s.holdUntil && s.eff > s.finalEff + 0.002;
-      if (finishing !== s.finishing) {
-        s.finishing = finishing;
-        setCaptionsDone(finishing);
-      }
 
       // The images only become tiles once the fifth is actually home — and stop
       // being tiles again if the sequence is scrolled back off the end.
@@ -662,41 +721,23 @@ export function HeroImageSequence() {
         }
       }
 
-      // Keep the loop alive whenever the sequence is driving rather than being
-      // driven. Both a pause and an autoplay stretch are periods in which the
-      // page does not move under anybody's hand — no scroll events, so nothing
-      // to schedule the next frame — and the sequence would stop dead at the
-      // first pause and never wake up to find it over.
-      if (!raf && (performance.now() < s.holdUntil || s.auto === 'running')) {
-        raf = requestAnimationFrame(update);
-      }
     };
 
     const onScroll = () => {
       if (!raf) raf = requestAnimationFrame(update);
     };
 
-    // Swallow the input itself while the sequence is driving — during a pause,
-    // and for the whole of an autoplay run — so the browser never starts a
-    // scroll we would have to snap back from (that fight is what reads as jank).
-    const blockWhileDriven = (e: Event) => {
-      const s = run.current;
-      if (performance.now() < s.holdUntil || s.auto === 'running') e.preventDefault();
-    };
-
+    // No wheel or touch handler any more: the sequence never drives the page,
+    // so there is no scroll of its own to defend against the visitor's.
     update();
     window.addEventListener('scroll', onScroll, { passive: true });
     window.addEventListener('resize', update);
-    window.addEventListener('wheel', blockWhileDriven, { passive: false });
-    window.addEventListener('touchmove', blockWhileDriven, { passive: false });
     return () => {
       if (raf) cancelAnimationFrame(raf);
       window.removeEventListener('scroll', onScroll);
       window.removeEventListener('resize', update);
-      window.removeEventListener('wheel', blockWhileDriven);
-      window.removeEventListener('touchmove', blockWhileDriven);
     };
-  }, [progress, geoTick, bigTop, bigLeft, bigW, bigH]);
+  }, [progress, geoTick, bigTop, bigLeft, bigW, bigH, capSize]);
 
   return (
     <>
@@ -709,6 +750,17 @@ export function HeroImageSequence() {
         className="relative"
         style={{ height: heldVh ? `${RUNWAY_VH * heldVh}px` : `${RUNWAY_VH * 100}svh` }}
       />
+
+      {/* Off-screen, at a known size, in the same face and tracking as the
+          captions: what their size is solved against. */}
+      <span
+        ref={capProbe}
+        aria-hidden
+        style={{ position: 'fixed', left: -99999, top: 0, fontSize: CAPTION_PROBE_PX }}
+        className={`${montserrat.className} whitespace-nowrap uppercase tracking-[0.02em]`}
+      >
+        {LONGEST_CAPTION}
+      </span>
 
       {/* Fixed stage. pointer-events-none so it never blocks the page — each
           image opts back in for itself once it has landed and become a tile. */}
@@ -724,20 +776,36 @@ export function HeroImageSequence() {
             geo={geo}
             landed={landed}
             selectedId={selectedId}
-            flipped={flipped[i]}
           />
         ))}
+
+        {/* A phone's captions ride with their pictures, so they live on the
+            same stage the pictures do — above them in paint order, since they
+            are declared after. */}
+        {piled &&
+          heroSequenceImages.map((img, i) => (
+            <PiledCaption
+              key={`caption-${img.label}`}
+              index={i}
+              progress={progress}
+              geoTick={geoTick}
+              geo={geo}
+              capSize={capSize}
+            />
+          ))}
       </div>
 
-      <SequenceCaptions
-        activeIndex={captionIndex}
-        slotTop={bigTop}
-        slotLeft={bigLeft}
-        slotW={bigW}
-        slotH={bigH}
-        done={captionsDone}
-        onAdvance={flipSlot}
-      />
+      {/* …and a wide screen's are one stack across the big image, where there
+          is room to hold all seven lines at once. */}
+      {!piled && (
+        <SequenceCaptions
+          progress={progress}
+          slotTop={bigTop}
+          slotLeft={bigLeft}
+          slotW={bigW}
+          slotH={bigH}
+        />
+      )}
     </>
   );
 }
@@ -751,7 +819,6 @@ function SequenceImage({
   geo,
   landed,
   selectedId,
-  flipped,
 }: {
   image: HeroSequenceImage;
   /** The tile this image becomes when it lands — its title and gallery. */
@@ -763,9 +830,6 @@ function SequenceImage({
   /** True once the flight is home — the image settles to 90% and is a tile. */
   landed: boolean;
   selectedId: string | null;
-  /** True once this slot's caption has moved to its second line, which is the
-   *  cue for the slot to turn over to its second face. */
-  flipped: boolean;
 }) {
   // Every transform reads the ROOT motion values directly — chaining a derived
   // motion value into the array form of useTransform silently freezes it.
@@ -791,7 +855,7 @@ function SequenceImage({
   const opacity = useTransform(progress, (p) => {
     const shown = Math.min(1, Math.max(0, (p - appearAt) / 0.014));
     if (index === N - 1) return shown;
-    const dimmed = lerp(1, PARKED_OPACITY, ease(seg(p, P[index + 1], P[index + 2])));
+    const dimmed = lerp(1, PARKED_OPACITY, ease(seg(p, SWAP[index], P[index + 2])));
     return shown * lerp(dimmed, 1, ease(seg(p, FINAL_START, 1)));
   });
 
@@ -801,14 +865,30 @@ function SequenceImage({
   // turned over to its second face and the clip is behind it, playing to
   // nobody. State rather than a transform because it drives an imperative
   // play/pause, and it only changes twice in the whole sequence.
+  // A clip runs on the scroll like everything else. Its window is the stretch
+  // in which it is actually the face you can see: from the frame the slot
+  // reaches full size — which is also the frame its caption starts writing
+  // itself — to the frame the slot turns over, after which the clip is behind
+  // a photograph. The whole clip is spent across that stretch.
   const hasClip = /\.mp4$/i.test(image.src);
-  const [playing, setPlaying] = useState(false);
+  const clipScrub = useTransform(progress, (p) =>
+    seg(p, P[index + 1], FLIP_AT[index] ?? P[index + 2]),
+  );
+
+  // A slot with two faces turns over where its group's second caption arrives,
+  // so the picture changes with the word. Read from the scroll rather than
+  // signalled by the captions — both are now functions of the same number, and
+  // one of them asking the other would only be a way for them to disagree.
+  // Not sticky: scroll back and it turns face-up again, exactly as the caption
+  // that cued it goes away again.
+  const flipAt = FLIP_AT[index];
+  const [flipped, setFlipped] = useState(false);
   useEffect(() => {
-    if (!hasClip) return;
-    const check = (p: number) => setPlaying(p >= P[index + 1] && p < P[index + 2]);
+    if (flipAt == null) return;
+    const check = (p: number) => setFlipped(p >= flipAt);
     check(progress.get());
     return progress.on('change', check);
-  }, [hasClip, index, progress]);
+  }, [flipAt, progress]);
 
   const isSelected = landed && selectedId === tile.id;
   const isOther = landed && selectedId !== null && !isSelected;
@@ -869,7 +949,7 @@ function SequenceImage({
                 src={image.src}
                 poster={image.poster}
                 alt={image.alt}
-                playing={playing}
+                scrub={hasClip ? clipScrub : null}
               />
             </span>
             {image.back && (

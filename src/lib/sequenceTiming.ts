@@ -1,47 +1,55 @@
 /**
- * How long each beat of the hero sequence lasts.
+ * Where each part of the hero sequence happens.
  *
- * <HeroImageSequence> and <SequenceCaptions> both have to agree on these: the
- * sequence decides how long to pause on an image, the captions decide how long
- * to spend writing into that pause, and a disagreement shows up as a caption
- * cut off mid-word or an image left sitting on a finished line. They live here
- * rather than in either component so neither has to import the other for them.
+ * The sequence is scrolled, not played. Almost everything here is therefore a
+ * POSITION on the scroll's own 0→1 progress rather than a duration: nothing
+ * waits, nothing pins the page, and scrolling back runs it all in reverse. The
+ * single exception is a caption's reveal, which is a one-shot animation and so
+ * is the one thing still measured by a clock.
+ *
+ * <HeroImageSequence> and <SequenceCaptions> both read these, and must agree:
+ * the images move to the phase boundaries and the captions arrive on them.
  */
-
-/** One caption line's type-in. */
-export const TYPE_MS = 2000;
-/** The beat between the two lines of a pair, before the second starts. */
-export const CAPTION_DWELL_MS = 500;
-/** How long the newest line stands at full strength once it has finished… */
-export const DWELL_MS = 1000;
-/** …and how long it then takes to settle back into the stack. */
-export const PARK_FADE_MS = 500;
-/** The whole stack leaves over this, once the sequence is done with it. */
-export const FADE_OUT_MS = 2000;
 
 /**
- * An image's expand — and, because one image growing IS the one before it
- * retreating, the same span covers a shrink. Under autoplay this is the clock
- * the sequence moves to; under a manual scroll it is only the width of the
- * window the movement is spread across.
+ * Phase boundaries. Image i grows across [PHASES[i], PHASES[i+1]] and shrinks
+ * across [PHASES[i+1], PHASES[i+2]], so the last image's shrink is the final
+ * phase — which is exactly when every image flies to its MainTile.
  */
-export const GROW_MS = 1500;
-/** Dead air after a caption has settled into the stack, before the next image
- *  begins to expand. */
-export const BEFORE_NEXT_MS = 500;
+export const PHASES = [0, 0.18, 0.34, 0.5, 0.66, 0.82, 1] as const;
 
 /**
- * How long the sequence pauses on an image carrying `lines` captions: long
- * enough for every one of them to type itself in, with the beat between a pair,
- * and then for the last to stand, fade back into the stack, and be left alone
- * for a moment before anything moves again.
+ * How much scrolling opens a line's reveal, from covered to fully uncovered.
+ *
+ * A distance, not a duration: the wipe is drawn by the scroll itself, so it
+ * opens as you go down and closes again as you come back up. Nothing here is
+ * left on a clock at all.
  */
-export function holdMsFor(lines: number): number {
-  return (
-    lines * TYPE_MS +
-    (lines - 1) * CAPTION_DWELL_MS +
-    DWELL_MS +
-    PARK_FADE_MS +
-    BEFORE_NEXT_MS
-  );
+export const REVEAL_SPAN = 0.04;
+
+/**
+ * How much further the scroll has to travel before the SECOND line of a pair
+ * arrives under the first — exactly the reveal, so the second line begins the
+ * moment the first has finished writing itself and never before.
+ */
+export const PAIR_GAP = REVEAL_SPAN;
+
+/**
+ * When image `i` gives way: the point at which it starts to shrink and the next
+ * one starts to grow into the space. Not the phase boundary itself but a
+ * caption's worth past it — an image holds full size until every line it
+ * carries has finished being revealed, so nothing moves out from under a word
+ * still being written.
+ */
+export function swapStart(i: number, lines: number): number {
+  return PHASES[i + 1] + lines * REVEAL_SPAN;
 }
+
+/** How much scrolling takes a line from full strength down to the stack. This
+ *  is what "the text reduces its opacity on scroll" is: no timer, no dwell —
+ *  keep scrolling and the line recedes, scroll back and it returns. */
+export const DIM_SPAN = 0.1;
+
+/** Where the whole stack starts to leave. It is gone by 1, so the captions
+ *  clear the screen over the last image's flight to its tile. */
+export const STACK_FADE_START = 0.9;

@@ -1,3 +1,5 @@
+import { PAIR_GAP, PHASES } from '@/lib/sequenceTiming';
+
 /**
  * The hero sequence's captions, grouped by the image they belong to.
  *
@@ -19,6 +21,18 @@ export const captionGroups: readonly (readonly string[])[] = [
 
 /** Every line, in order — what the finished stack reads as. */
 export const captionLines: string[] = captionGroups.flatMap((g) => [...g]);
+
+/**
+ * The scroll progress each line arrives at.
+ *
+ * A group belongs to an image and arrives when that image reaches full size —
+ * PHASES[i + 1]. The second line of a pair lands a little further down the
+ * scroll, which is what separates "Építészet" from "Belsőépítészet" now that
+ * nothing waits on a timer: they are two positions, not two moments.
+ */
+export const captionArrivals: number[] = captionGroups.flatMap((group, i) =>
+  group.map((_, j) => PHASES[i + 1] + j * PAIR_GAP),
+);
 
 /**
  * Lines that are not plain white.
