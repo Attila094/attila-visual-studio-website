@@ -24,8 +24,9 @@ const MOBILE_LINKS = LINKS;
 /** Shared pill geometry, so the corner button matches the bar exactly — same
  *  height, same baseline. Sized at 80% of the original. */
 const PILL_PAD = 'p-[4px] sm:p-[6px]';
+/** …and its type, a tenth up from the 7.2/8px it was set at. */
 const PILL_LINK =
-  'block rounded-full px-[8px] py-[5.6px] text-[7.2px] uppercase tracking-[0.14em] transition-colors sm:px-[16px] sm:text-[8px]';
+  'block rounded-full px-[8px] py-[5.6px] text-[7.92px] uppercase tracking-[0.14em] transition-colors sm:px-[16px] sm:text-[8.8px]';
 
 /**
  * Which page you are on is carried by WEIGHT, not by colour.
@@ -61,11 +62,11 @@ const ACTIVE = 'font-bold text-white';
 const PILL_BG = 'absolute inset-0 z-0 rounded-full ring-1 ring-inset ring-white/30';
 const PILL_BG_STYLE = {
   backgroundColor: 'rgba(255,255,255,0.072)',
-  // The lit top edge, as a background layer rather than a child element. One
-  // less box inside the pill is one less thing to clip, and a background is
-  // shaped by the element's own radius for free.
-  backgroundImage:
-    'linear-gradient(to bottom, rgba(255,255,255,0.22), rgba(255,255,255,0) 55%)',
+  // No gradient. There was a lit wash down the top half — the specular
+  // highlight a curved pane would carry — and it read as a painted-on effect
+  // rather than as light. The tint is flat now: what shapes the glass is the
+  // blur, the saturation and the 1px edges, all of which are doing something
+  // to the page behind rather than drawing over it.
   backdropFilter: 'blur(14px) saturate(180%)',
   WebkitBackdropFilter: 'blur(14px) saturate(180%)',
   boxShadow:
@@ -113,21 +114,17 @@ function GlassPane({ radius }: { radius: number }) {
 }
 
 /**
- * Where the phone's chrome sits: flush with the tile column, not with the
- * window.
+ * Where the phone's chrome sits: the same distance from the window's edge as
+ * from its top.
  *
- * The tiles are inset 16px by their band's padding and a further 9px by the 95%
- * a landed tile settles to, so their VISIBLE edges — the ones the eye lines up
- * against — fall 25px from each side of the screen. The pills used to sit at
- * 12px and overhang them by a clear 13px. From `sm` up the row is a different
- * shape and the original offsets come back.
- *
- * Written out in full rather than built from a constant: Tailwind generates
- * utilities by scanning the source for complete class names, so a class
- * assembled from a template literal is a class that never gets built.
+ * 12px on both axes, matching `top-3`, so each pill sits in an even corner. It
+ * was briefly pulled in to 25px to line up with the tile column's visible
+ * edges; that made the side gap nearly twice the one above it, and a corner
+ * button reads as misplaced long before anyone works out what it was aligned
+ * to. From `sm` up the original wider offsets come back.
  */
-const MENU_X = 'right-[25px]';
-const CONTACT_X = 'left-[25px] sm:left-6';
+const MENU_X = 'right-3';
+const CONTACT_X = 'left-3 sm:left-6';
 /**
  * …and the menu pill runs a tenth wider than its content asks for, all of it
  * added on the LEFT so it grows inward, away from the edge it is anchored to.
@@ -337,7 +334,12 @@ export function BallMenu() {
             <Link
               href="/contact"
               data-active={contactActive}
-              className={`${PILL_LINK} ${contactActive ? ACTIVE : INACTIVE}`}
+              // Always bold and white, unlike the bar's links. CONTACT is the
+              // one thing here that is a call rather than a place, and it is
+              // meant to carry the same weight whether or not you are already
+              // on its page — so it does not dim to 70% the way an unvisited
+              // nav item does.
+              className={`${PILL_LINK} ${ACTIVE}`}
             >
               Contact
             </Link>
