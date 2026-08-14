@@ -205,14 +205,47 @@ const PARKED_TEXT_OPACITY = 0.2;
 const FLIP_MS = 900;
 
 /**
- * A silent clip standing in for a still.
+ * The clip's frame rate, and the grid every seek is snapped to.
  *
- * It does NOT autoplay. A slot spends the first part of its life as a thumbnail
- * the size of a fingernail, and a clip left running through that is half over
- * by the time the slot is big enough to watch — so it is held at its first
- * frame and started by `playing`, which the slot turns on at full size. Held at
- * the first frame rather than paused wherever it happened to be, so it always
- * begins at the beginning.
+ * A property of the FILE, which no media API will tell us — the encode is
+ * 15fps, all-short-GOP, so this has to be kept in step with it by hand. Snapping
+ * to the grid is what stops the work: a scroll fires many times per frame of
+ * film, and every request that lands on a time the clip has no separate picture
+ * for is a decode asked for and thrown away.
+ */
+const CLIP_FPS = 15;
+/**
+ * How long a seek is given before another may be issued over the top of it.
+ *
+ * `seeked` is not guaranteed to arrive — a phone that drops the decoder, a
+ * seek coalesced away — and without this the clip would freeze on whatever
+ * frame the lost seek was carrying, for good.
+ */
+const SEEK_WATCHDOG_MS = 400;
+
+/**
+ * A silent clip standing in for a still, scrubbed by the scroll.
+ *
+ * It never plays. Seeking to a position the scroll chooses means the picture
+ * runs forwards as you go down and backwards as you come back up, which is what
+ * everything else on this stage does, and `play()` and seeking at the same time
+ * only fight each other.
+ *
+ * Two things make that smooth, and both of them are easy to get wrong:
+ *
+ * ONE SEEK AT A TIME. A scroll fires far faster than a decoder can answer, so
+ * asking on every change builds a queue of seeks to frames nobody will ever see
+ * and the picture falls behind the page by however long the queue is. Instead
+ * the newest request is remembered and only ONE is ever in flight; when it
+ * lands, the clip goes straight to wherever the scroll has got to by then. The
+ * picture can be a frame late but never a queue late.
+ *
+ * AND THE FILE HAS TO BE SEEKABLE. This is most of it, and no amount of code
+ * here substitutes: seeking to a time means decoding forward from the keyframe
+ * before it, so a clip with one keyframe at the front costs up to 191 frames of
+ * decoding to show ONE — which is jank on a desktop and, on a phone's decoder,
+ * a picture that simply never arrives. The clip is encoded with a keyframe every
+ * three frames, so a seek now costs three at worst.
  */
 function SlotVideo({
   src,
@@ -232,29 +265,72 @@ function SlotVideo({
   useEffect(() => {
     const el = ref.current;
     if (!el || !scrub) return;
-    // The clip does not play — it is SCRUBBED. Seeking to a position the
-    // scroll chooses means the picture runs forwards as you go down and
-    // backwards as you come back up, which is what everything else on this
-    // stage does. It stays paused throughout: `play()` and seeking at the same
-    // time fight each other.
     el.pause();
-    const seek = (t: number) => {
+
+    // A phone will not paint a frame from a video it has never played, however
+    // much of it has been fetched — which is why the clip was simply absent
+    // there while working on a desktop. One muted, inline play immediately
+    // undone is enough to bring the decoder up; it needs no gesture precisely
+    // because it is muted and inline. Rejection is fine and expected on any
+    // browser that disagrees: the clip is silent and nothing depends on it
+    // having run.
+    let gone = false;
+    const started = el.play();
+    if (started && typeof started.then === 'function') {
+      started.then(() => { if (!gone) el.pause(); }).catch(() => {});
+    }
+
+    /** Where the scroll wants the clip, snapped to the frame grid. */
+    let target = -1;
+    /** …and what the element was last actually asked for. */
+    let asked = -1;
+    /** When the seek in flight was issued; 0 when idle. */
+    let issued = 0;
+
+    const pump = () => {
+      if (target < 0 || asked === target) return;
+      if (issued && performance.now() - issued < SEEK_WATCHDOG_MS) return;
+      asked = target;
+      issued = performance.now();
+      // Plainly, not `fastSeek`: that lands on the nearest keyframe, which
+      // would quantise the picture to 41 stops across the whole clip. Exact
+      // seeking is what the short GOP bought, and it costs three frames.
+      el.currentTime = asked;
+    };
+
+    const request = (t: number) => {
       const d = el.duration;
       if (!Number.isFinite(d) || d <= 0) return;
-      const want = Math.min(0.999, Math.max(0, t)) * d;
-      // Seeking is the expensive part, so ask only when the frame would
-      // actually differ — a scroll fires far more often than the clip has
-      // frames to show for it.
-      if (Math.abs(el.currentTime - want) > 1 / 30) el.currentTime = want;
+      const next =
+        Math.round(Math.min(0.999, Math.max(0, t)) * d * CLIP_FPS) / CLIP_FPS;
+      if (next === target) return;
+      target = next;
+      pump();
     };
-    seek(scrub.get());
-    const stop = scrub.on('change', seek);
-    // The duration is unknown until metadata lands; seek again once it is.
-    const onMeta = () => seek(scrub.get());
-    el.addEventListener('loadedmetadata', onMeta);
+
+    const onSeeked = () => {
+      issued = 0;
+      pump();
+    };
+    // The duration is unknown until metadata lands, so the first request is
+    // dropped; ask again once there is something to measure against.
+    const onReady = () => {
+      target = -1;
+      asked = -1;
+      request(scrub.get());
+    };
+
+    request(scrub.get());
+    const stop = scrub.on('change', request);
+    el.addEventListener('seeked', onSeeked);
+    el.addEventListener('loadedmetadata', onReady);
+    el.addEventListener('loadeddata', onReady);
     return () => {
+      gone = true;
       stop();
-      el.removeEventListener('loadedmetadata', onMeta);
+      el.removeEventListener('seeked', onSeeked);
+      el.removeEventListener('loadedmetadata', onReady);
+      el.removeEventListener('loadeddata', onReady);
     };
   }, [scrub]);
 
@@ -264,9 +340,9 @@ function SlotVideo({
       src={src}
       poster={poster}
       muted
-      loop
       playsInline
       preload="auto"
+      disableRemotePlayback
       aria-label={alt}
       className="absolute inset-0 h-full w-full object-cover"
     />
