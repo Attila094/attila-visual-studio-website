@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 
-const TEXT = '“Alkotás és értékteremtés, építészet és vizualizáció segítségével…”';
+const TEXT = '“Alkotás és értékteremtés, építészet és vizualizáció…”';
 /** The breath in the middle of the line — the comma the sentence turns on. */
 const PAUSE_AFTER = 'értékteremtés,';
 /**
