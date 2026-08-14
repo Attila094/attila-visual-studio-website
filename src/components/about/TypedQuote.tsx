@@ -5,9 +5,17 @@ import { useEffect, useState } from 'react';
 const TEXT = '“Alkotás és értékteremtés, építészet és vizualizáció segítségével…”';
 /** The breath in the middle of the line — the comma the sentence turns on. */
 const PAUSE_AFTER = 'értékteremtés,';
-/** The whole line, start to finish. */
-const TOTAL_MS = 2000;
-const PAUSE_MS = 320;
+/**
+ * The whole line, start to finish — and it really is the whole of it: the
+ * per-character step is what is left after the pause, divided by the line, so
+ * the elapsed time comes to exactly this figure however long the sentence gets.
+ *
+ * Both numbers doubled together, which makes this the same typing at half
+ * speed rather than a slower line with the same beat stapled into it — the
+ * breath after the comma keeps its proportion to the words either side of it.
+ */
+const TOTAL_MS = 4000;
+const PAUSE_MS = 640;
 
 /**
  * The hero quote, typed out over two seconds with a beat after

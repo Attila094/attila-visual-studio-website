@@ -226,10 +226,10 @@ export default function AboutPage() {
           <p>
             Szabadúszóként az elmúlt 10 évben széleskörű tapasztalatot szereztem az építészet, a
             belsőépítészet és a digitális vizualizáció területén. Ez a multidiszciplináris
-            tapasztalati háttér biztosítja számomra azt a komplex szemléletmódot, amellyel minőségi
-            műszaki tartalom mellett magasszínvonlanú esztétikai megjelenéssel társítva végzem
-            tervezési folyamatokat a kezdeti koncepciótól fotorealisztikus prezentációig, teljes körű
-            szolgáltatást tudok nyújtani az ügyefeleim részére.
+            tapasztalati háttér biztosítja számomra azt a komplex szemléletmódot, amely a mérnöki és
+            művészi látásmód ötvözete. Magas szaktudást igénylő műszaki tartalmat tudom társítani a
+            magas színvonalú esztétikai megjelenéssel, így teljes körű szolgáltatást tudok nyújtani
+            az ügyfeleim részére, egészen a kezdeti koncepciótól a végső vizuális megjelenítésig.
           </p>
         </RevealLines>
 
