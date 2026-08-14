@@ -16,9 +16,9 @@ import { WORK_ANCHOR } from '@/lib/anchors';
 import { useHeldViewportHeight } from '@/lib/useHeldViewportHeight';
 import {
   captionArrivals,
+  captionSpans,
   clipWindow,
   PHASES,
-  REVEAL_SPAN,
   SWAP_AT,
 } from '@/lib/sequenceTiming';
 import { SequenceCaptions } from './SequenceCaptions';
@@ -87,20 +87,22 @@ const MOBILE_RADIUS_SCALE = 0.4;
 const MOBILE_ROW_GAP = ROW_ITEM_GAP / 2;
 const MOBILE_SIDE_MARGIN = 12;
 /** Where the fixed chrome ends — the nav pills and the docked logo both finish
- *  at 55px. A caption over an expanded picture is centred in what lies between
- *  this and the picture's top edge. */
+ *  at 55px. A phone's sequence lands with the tile column's top edge here. */
 const HEADER_H = 56;
 /** A phone caption's type size, as a share of the big image's width. */
 const CAPTION_SIZE = 0.065 * 2.5;
 /**
  * …under a ceiling: no line may take more than this much of the screen's
- * width. The ceiling is what actually decides the size on a phone. At the size
- * above, "GRAFIKAI TERVEZÉS" sets 640px wide on a 375px screen — it would hang
- * a quarter of its length off each edge — so the longest line is what the whole
- * set is sized from, and they all share one size rather than each finding its
- * own and reading as a jumble.
+ * width. The ceiling is what actually decides the size on a phone — the size
+ * above never binds there — so this number IS the type size, and the longest
+ * line is what the whole set is measured from, so they all share one size
+ * rather than each finding its own and reading as a jumble.
+ *
+ * 96% leaves the longest line about seven pixels of air at each edge on a 375px
+ * screen, which is as close to the edges as type can go and still look placed
+ * rather than trapped.
  */
-const CAPTION_SCREEN_FILL = 0.94;
+const CAPTION_SCREEN_FILL = 0.96;
 /** The longest caption there is: what the ceiling above is measured against. */
 const LONGEST_CAPTION = captionLines.reduce((a, b) => (b.length > a.length ? b : a));
 /** The size the hidden probe is set at; the measurement is divided back out of
@@ -108,8 +110,23 @@ const LONGEST_CAPTION = captionLines.reduce((a, b) => (b.length > a.length ? b :
 const CAPTION_PROBE_PX = 100;
 /** …and the line box that size sets, as a multiple of it. */
 const CAPTION_LINE = 1.15;
-/** Scroll runway, in viewport heights. */
-export const RUNWAY_VH = 3;
+/**
+ * Scroll runway, in viewport heights.
+ *
+ * This is what decides how much scrolling the whole sequence gets: the tiles
+ * sit below it, and the sequence ends where they are. So it is the other half
+ * of any change to the timeline's proportions — the timeline says how the
+ * scroll is DIVIDED, this says how much there is to divide.
+ *
+ * 3.9 rather than 3 because the caption reveals were doubled. Doubling them in
+ * `sequenceTiming` alone would have been a doubling on paper only: with the
+ * runway fixed, a longer reveal is a bigger share of the same scroll, and the
+ * grow, the swaps and the film would all have sped up by 18% to pay for it.
+ * Growing the runway by the same ratio the timeline's total did (130/106)
+ * leaves every one of those beats exactly the length it was, in pixels, and
+ * gives the reveals a true 2x.
+ */
+export const RUNWAY_VH = 3.9;
 /** Progress at which the first image takes over from the bouncing ball. */
 const BALL_HANDOFF = 0.005;
 
@@ -423,6 +440,9 @@ interface Geometry {
   /** Type size for the phone captions. Fixed at the size the caption had over the
    *  big image: it MOVES with its picture, it does not shrink with it. */
   captionSize: number;
+  /** The height everything here was measured against — held, so a phone sliding
+   *  its chrome cannot shift a caption that is centred against it. */
+  vh: number;
 }
 
 const emptyRect = (): Rect => ({ top: 0, left: 0, w: 0, h: 0, r: 0 });
@@ -512,14 +532,14 @@ function PiledCaption({
   progress,
   geoTick,
   geo,
-  capSize,
+  captionPx,
 }: {
   index: number;
   progress: MotionValue<number>;
   geoTick: MotionValue<number>;
   geo: React.MutableRefObject<Geometry>;
-  /** The caption type size, published by the geometry loop. */
-  capSize: MotionValue<number>;
+  /** The caption type size in px, published by the geometry loop. */
+  captionPx: number;
 }) {
   const lines = captionGroups[index] ?? [];
   const base = linesBefore(index);
@@ -533,12 +553,12 @@ function PiledCaption({
    * The caption has two homes and travels between them as its picture lies
    * down.
    *
-   * While the picture is EXPANDED it stands in the gap over it — the band
-   * between the fixed header and the picture's top edge — centred in that gap
-   * both ways, so it reads as a title over the photograph rather than crowding
-   * its edge. Once the picture has PARKED the caption sits on it, centred in
-   * the strip, which is the only place left for it once the five strips share
-   * the screen with nothing between them.
+   * While the picture is EXPANDED it stands UNDER it — centred across the
+   * screen, and centred again in the band between the picture's bottom edge and
+   * the foot of the window, so it reads as a caption set beneath the photograph
+   * rather than crowding it. Once the picture has PARKED the caption sits on
+   * it, centred in the strip, which is the only place left for it once the five
+   * strips share the screen with nothing between them.
    */
   const left = useTransform([progress, geoTick], ([p]: number[]) =>
     lerp(0, rectFor(index, p, geo.current).left, travel(p)),
@@ -550,13 +570,26 @@ function PiledCaption({
     const g = geo.current;
     const blockH = lines.length * g.captionSize * CAPTION_LINE;
     const rect = rectFor(index, p, g);
-    const inGap = HEADER_H + (rect.top - HEADER_H - blockH) / 2;
+    const foot = rect.top + rect.h;
+    const inGap = foot + Math.max(0, g.vh - foot - blockH) / 2;
     const onStrip = rect.top + (rect.h - blockH) / 2;
     return lerp(inGap, onStrip, travel(p));
   });
-  const fontSize = capSize;
-  // Full strength while the picture is up, settling as it shrinks away.
-  const opacity = useTransform(progress, (p) => lerp(1, PARKED_TEXT_OPACITY, travel(p)));
+  /**
+   * Full strength while the picture is up, settling back as it shrinks away —
+   * and then gone entirely over the flight to the tiles.
+   *
+   * The second part is not a refinement. A caption that only settles to a fifth
+   * STAYS at a fifth, and the strip it is sitting on becomes a tile: all five
+   * words ended up laid over the finished tile row, faintly, on top of the
+   * titles those tiles carry. So the whole set leaves across exactly the stretch
+   * the last picture takes to fly home, and by the moment the tiles are the
+   * tiles there is nothing of the sequence left on top of them.
+   */
+  const opacity = useTransform(
+    progress,
+    (p) => lerp(1, PARKED_TEXT_OPACITY, travel(p)) * (1 - seg(p, FINAL_START, 1)),
+  );
 
   return (
     <motion.div
@@ -570,7 +603,7 @@ function PiledCaption({
           text={line}
           row={base + j}
           progress={progress}
-          fontSize={fontSize}
+          fontSize={captionPx}
         />
       ))}
     </motion.div>
@@ -587,10 +620,13 @@ function PiledCaptionLine({
   text: string;
   row: number;
   progress: MotionValue<number>;
-  fontSize: MotionValue<number>;
+  /** px. A number, not a motion value — see <HeroImageSequence>'s `captionPx`. */
+  fontSize: number;
 }) {
   const clipPath = useTransform(progress, (p) => {
-    const t = seg(p, captionArrivals[row], captionArrivals[row] + REVEAL_SPAN);
+    // Its OWN span, not a shared one: the word over the film is uncovered
+    // across the film's whole length, every other line across one reveal.
+    const t = seg(p, captionArrivals[row], captionArrivals[row] + captionSpans[row]);
     return `inset(0 ${(1 - t) * 100}% 0 0)`;
   });
   return (
@@ -615,6 +651,7 @@ export function HeroImageSequence() {
     piled: false,
     pileTop: 0,
     captionSize: 0,
+    vh: 0,
   });
 
   // The big image's live rect, published so the caption stack can be set across
@@ -623,12 +660,22 @@ export function HeroImageSequence() {
   const bigLeft = useMotionValue(0);
   const bigW = useMotionValue(0);
   const bigH = useMotionValue(0);
-  // The phone caption's type size, published the same way. Read through a
-  // transform of `geo` instead and it comes out stale: it is the one value on
-  // this stage that does not change every frame, so a transform has nothing to
-  // recompute it against and keeps whatever the very first geometry pass —
-  // taken before the logo has docked — happened to produce.
-  const capSize = useMotionValue(0);
+  /**
+   * The phone caption's type size, in px — a plain number, deliberately.
+   *
+   * It was a motion value, and that silently did not work: only its first value
+   * ever reached the DOM. Every other value on this stage is a `useTransform`
+   * created in the component that renders it, and those update fine — the
+   * clip-path on the very same paragraph is redrawn every frame. A motion value
+   * handed DOWN as a prop and written from the scroll loop is not registered
+   * the same way, so the type stayed pinned at whatever the first geometry pass
+   * produced: 33.3px, measured before the logo had docked and while the stage
+   * was still a third of its final height, instead of 37.9px.
+   *
+   * State costs a render, which is why it is thresholded — but it settles
+   * before the first caption is due and then never moves again.
+   */
+  const [captionPx, setCaptionPx] = useState(0);
 
   // How wide the longest caption actually sets, in ems of its own size.
   // Measured, not estimated: a per-character constant is a guess about metrics
@@ -637,15 +684,18 @@ export function HeroImageSequence() {
   // loaded, since the first measurement is of the fallback face.
   const capEm = useRef(LONGEST_CAPTION.length * 0.68);
   const capProbe = useRef<HTMLSpanElement>(null);
+  /** Bumped when the probe reads differently, to ask the geometry for a pass. */
+  const [fontTick, setFontTick] = useState(0);
   useLayoutEffect(() => {
     const el = capProbe.current;
     if (!el) return;
-    const measure = () => {
-      const w = el.getBoundingClientRect().width;
-      if (w > 0) capEm.current = w / CAPTION_PROBE_PX;
-    };
-    measure();
-    document.fonts?.ready.then(measure).catch(() => {});
+    const w = el.getBoundingClientRect().width;
+    if (w > 0) capEm.current = w / CAPTION_PROBE_PX;
+    // …and once more when the webfont has settled, to cover a page nobody has
+    // scrolled yet. The geometry re-reads the probe on every pass (see below),
+    // but a pass only happens on a scroll or a resize, and a font arriving is
+    // neither — so this asks for one.
+    document.fonts?.ready.then(() => setFontTick((t) => t + 1)).catch(() => {});
   }, []);
   // True the moment the fifth image reaches its tile — from here the five are
   // the tiles, and clickable.
@@ -671,6 +721,9 @@ export function HeroImageSequence() {
     /** The landing brake: loaded by being past the landing, spent by firing. */
     brakeArmed: false,
     brakeUntil: 0,
+    /** Last published caption type size, so a render is asked for only when it
+     *  has actually moved. */
+    cap: 0,
   });
   // Which caption arrangement is in force — one stack across the big image, or
   // one caption per picture travelling with it. Mirrors the same measurement
@@ -742,12 +795,25 @@ export function HeroImageSequence() {
         // Full width, and only the height given up.
         parkedW = slotW;
       }
-      // Phone captions. Sized off the big image's width so the longest line
-      // clears it.
+      // Phone captions, sized against the longest line there is — re-read from
+      // the probe HERE, every pass, rather than measured once and trusted.
+      //
+      // Once was wrong. The first measurement is of the fallback face, which
+      // sets 10.82em against Montserrat's 9.50 for that line, and neither a
+      // `document.fonts.ready` nor a ResizeObserver on the probe reliably
+      // brought the second measurement back — so the type spent the life of the
+      // page 12% small, 316px of a 375px screen where the ceiling had asked for
+      // 360. This cannot go stale: it is one rect read on an element that is
+      // already ours, on a pass that was happening anyway.
+      const probeW = capProbe.current?.getBoundingClientRect().width ?? 0;
+      if (probeW > 0) capEm.current = probeW / CAPTION_PROBE_PX;
       const captionSize = mobile
         ? Math.min(slotW * CAPTION_SIZE, (vw * CAPTION_SCREEN_FILL) / capEm.current)
         : 0;
-      capSize.set(captionSize);
+      if (Math.abs(captionSize - run.current.cap) > 0.5) {
+        run.current.cap = captionSize;
+        setCaptionPx(captionSize);
+      }
 
       // A phone's five strips share the whole band between them — the pile
       // fills the screen from under the header to where the footer starts,
@@ -804,6 +870,7 @@ export function HeroImageSequence() {
         piled: mobile,
         pileTop: topMin,
         captionSize,
+        vh,
       };
 
       // --- Progress, with holds -------------------------------------------
@@ -951,7 +1018,7 @@ export function HeroImageSequence() {
       window.removeEventListener('scroll', onScroll);
       window.removeEventListener('resize', update);
     };
-  }, [progress, geoTick, bigTop, bigLeft, bigW, bigH, capSize]);
+  }, [progress, geoTick, bigTop, bigLeft, bigW, bigH, fontTick]);
 
   return (
     <>
@@ -1005,7 +1072,7 @@ export function HeroImageSequence() {
               progress={progress}
               geoTick={geoTick}
               geo={geo}
-              capSize={capSize}
+              captionPx={captionPx}
             />
           ))}
       </div>
@@ -1222,12 +1289,12 @@ function SequenceImage({
         {isSelected && (
           <span aria-hidden className="absolute inset-0 ring-2 ring-inset ring-white/40" />
         )}
-        {/* On a phone the title is centred across its strip — the strips are
-            wide and shallow there, and a line hung on the left edge of one
-            reads as a caption rather than as the tile's name. From `sm` up the
-            tiles are portraits again and it goes back to the bottom left. */}
+        {/* On a phone the title is centred in its strip, both ways — the strips
+            are wide and shallow there, and a line hung in a corner of one reads
+            as a caption rather than as the tile's name. From `sm` up the tiles
+            are portraits again and it goes back to the bottom left. */}
         <span
-          className={`absolute inset-0 flex flex-col items-center justify-end p-4 text-center transition-opacity duration-500 sm:items-stretch sm:text-left ${
+          className={`absolute inset-0 flex flex-col items-center justify-center p-4 text-center transition-opacity duration-500 sm:items-stretch sm:justify-end sm:text-left ${
             landed ? 'opacity-100' : 'opacity-0'
           }`}
         >

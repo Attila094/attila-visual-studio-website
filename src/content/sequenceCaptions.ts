@@ -32,11 +32,10 @@ export const captionLines: string[] = captionGroups.flatMap((g) => [...g]);
  * "Belsőépítészet".
  */
 const captionColors: Record<string, string> = {
-  // 20% grey, read as printers read it: a fifth of the way from white to
-  // black, so the word sets a shade softer than the rest of the stack. It
-  // multiplies with the line's opacity, which is what actually holds the
-  // parked lines back.
-  Építészet: '#cccccc',
+  // Empty on purpose, and kept rather than deleted. Every line is white today —
+  // "Építészet" was a shade softer for a while and is not any more — but the
+  // lookup is what lets one word differ without the others learning about it,
+  // and rebuilding it costs more than leaving it.
 };
 
 export function captionColor(line: string): string {

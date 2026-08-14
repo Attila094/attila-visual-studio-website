@@ -19,8 +19,18 @@ import { captionGroups } from '@/content/sequenceCaptions';
  * the images move to these boundaries and the captions arrive on them.
  */
 
-/** One caption line's reveal — the unit everything else is expressed in. */
-const REVEAL_RAW = 4;
+/**
+ * One caption line's reveal — the unit everything else is expressed in.
+ *
+ * The whole timeline is normalised at the end, and the scroll it is spread over
+ * is decided by the page, not here: a line's share of it is REVEAL_RAW/TOTAL.
+ * So doubling this alone does NOT double the scrolling a word takes — it takes
+ * the difference out of every other beat, which all speed up by the same
+ * fraction. What gives a reveal twice the scroll and leaves the rest untouched
+ * is doubling this AND lengthening the runway by the same ratio the total grew,
+ * which is what RUNWAY_VH now carries.
+ */
+const REVEAL_RAW = 8;
 /** The first image growing out of the bouncing ball. */
 const GROW_RAW = 18;
 /** One image giving way to the next: the shrink and the growth are the same
@@ -48,15 +58,28 @@ const holdRaw = (i: number) =>
  * reaches full size.
  *
  * Ordinarily a line lands as the one before it finishes, so a pair is one
- * reveal apart. The clip's group is the exception: its first caption is timed
- * to FINISH exactly as the film does, so it starts one reveal before the end
- * of the film rather than at the beginning of it — the word lands on the last
- * frame instead of standing over the whole thing.
+ * reveal apart. The clip's group is the exception: its first caption runs with
+ * the FILM rather than on its own clock — see below.
  */
 const lineOffsets = (i: number) =>
   i === CLIP_SLOT
-    ? [VIDEO_RAW - REVEAL_RAW, VIDEO_RAW]
+    ? [0, VIDEO_RAW]
     : Array.from({ length: LINES[i] }, (_, j) => j * REVEAL_RAW);
+
+/**
+ * …and how much scrolling each of them takes to uncover.
+ *
+ * One reveal, except for the word over the film. That one is drawn across the
+ * film's whole stretch, so the two are one gesture: the word begins with the
+ * first frame, finishes on the last, and takes exactly as long as the picture
+ * does. Every other line keeps its own reveal, which is why this is a list and
+ * not a constant — a single span cannot describe a caption that borrows its
+ * length from something else.
+ */
+const lineSpans = (i: number) =>
+  i === CLIP_SLOT
+    ? [VIDEO_RAW, REVEAL_RAW]
+    : Array.from({ length: LINES[i] }, () => REVEAL_RAW);
 
 // --- Laying the timeline out ------------------------------------------------
 // `bounds[i + 1]` is where image i reaches full size; `bounds[i + 2]` where it
@@ -71,8 +94,11 @@ const TOTAL = bounds[bounds.length - 1];
  *  and is parked by PHASES[i+2]. */
 export const PHASES: number[] = bounds.map((b) => b / TOTAL);
 
-/** How much scrolling opens a line's reveal, from covered to fully uncovered. */
-export const REVEAL_SPAN = REVEAL_RAW / TOTAL;
+/** How much scrolling opens each line's reveal, from covered to fully
+ *  uncovered — one entry per line, in the same order as `captionArrivals`. */
+export const captionSpans: number[] = LINES.flatMap((_, i) =>
+  lineSpans(i).map((s) => s / TOTAL),
+);
 
 /** Where image `i` gives way — it starts to shrink and the next starts to grow.
  *  An image holds full size until every line it carries has finished being
@@ -88,6 +114,11 @@ export const captionArrivals: number[] = LINES.flatMap((_, i) =>
  * The stretch a slot's clip is scrubbed across: from the frame the slot reaches
  * full size to the frame the film ends, which is also where the slot turns over
  * to its other face. `null` for a slot with no film.
+ *
+ * Identical, now, to the window its first caption is revealed across — the word
+ * and the picture are given the same stretch on purpose. They are still worked
+ * out separately rather than one deferring to the other, because they answer
+ * different questions and only happen to agree.
  */
 export function clipWindow(i: number): [number, number] | null {
   if (i !== CLIP_SLOT) return null;
