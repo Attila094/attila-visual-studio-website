@@ -3,8 +3,13 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Montserrat } from 'next/font/google';
 import { motion, useMotionValue, useTransform, type MotionValue } from 'framer-motion';
-import { captionArrivals, captionColor, captionLines } from '@/content/sequenceCaptions';
-import { DIM_SPAN, REVEAL_SPAN, STACK_FADE_START } from '@/lib/sequenceTiming';
+import { captionColor, captionLines } from '@/content/sequenceCaptions';
+import {
+  captionArrivals,
+  DIM_SPAN,
+  REVEAL_SPAN,
+  STACK_FADE_START,
+} from '@/lib/sequenceTiming';
 
 const montserrat = Montserrat({ subsets: ['latin', 'latin-ext'], weight: '800' });
 

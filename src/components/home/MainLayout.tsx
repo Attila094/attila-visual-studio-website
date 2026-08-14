@@ -61,6 +61,14 @@ export function MainLayout() {
     <section
       // Where every WORK link lands.
       id={WORK_ANCHOR}
+      // Which of the two shapes below is in force. <HeroImageSequence> reads
+      // it: it treats a band that is a whole screen tall as the centred tile
+      // row and ends the sequence on its top edge, and an OPEN band is a whole
+      // screen tall for a completely different reason — the gallery inside it.
+      // Without this it mistook one for the other, moved the finish line the
+      // moment a gallery opened, un-landed the tiles and closed the gallery it
+      // had just been asked to open.
+      data-tile-band={selectedId ? 'open' : 'closed'}
       // No z-index here on purpose: a positioned element with one creates a
       // stacking context that would trap this section relative to the fixed
       // sequence stage (z-30), which is what paints the tiles.
@@ -82,12 +90,16 @@ export function MainLayout() {
       // space between the tiles and the footer — and a tile row plus a gallery
       // is taller than the screen anyway, so there is no middle to sit in.
       // The scroll margin holds a WORK link's landing clear of the fixed
-      // chrome — but where the band carries that clearance as its own padding,
-      // it must go, and not only because it would double up. It is 96px the
-      // anchor stops SHORT of the band's top, and the sequence ends exactly on
-      // that top: leave it in and a WORK link arrives at 96.5% of the flight,
-      // the images never land, and not one tile is clickable.
-      className={`relative scroll-mt-24 bg-black px-4 pt-10 transition-[padding] duration-300 ease-out sm:px-6 ${
+      // chrome — but wherever the sequence ends ON this band, it must go, and
+      // not only because it would double up with the band's own padding. It is
+      // 96px the anchor stops SHORT of the band's top, and the sequence ends
+      // exactly on that top: leave it in and a WORK link arrives at 96.5% of
+      // the flight, the images never land, and not one tile is clickable. So it
+      // is off from `lg` up, where the band is centred, and off on a phone,
+      // where the sequence ends on the tile column just below. It applies only
+      // in between, where the tiles wrap and the sequence stops half a screen
+      // short of them anyway.
+      className={`relative scroll-mt-0 bg-black px-4 pt-10 transition-[padding] duration-300 ease-out sm:scroll-mt-24 sm:px-6 ${
         selectedId
           ? 'pb-16 sm:pb-20'
           : 'pb-0 lg:flex lg:min-h-svh lg:scroll-mt-0 lg:flex-col lg:justify-center lg:pt-14'

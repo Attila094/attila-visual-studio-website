@@ -6,7 +6,6 @@ import { motion, useMotionValue, useTransform, type MotionValue } from 'framer-m
 import { heroSequenceImages, type HeroSequenceImage } from '@/content/heroSequence';
 import { mainTiles } from '@/content/mainTiles';
 import {
-  captionArrivals,
   captionColor,
   captionGroups,
   captionLines,
@@ -15,7 +14,13 @@ import {
 import { logoDockEnd, selectedTile } from '@/lib/heroSequenceState';
 import { WORK_ANCHOR } from '@/lib/anchors';
 import { useHeldViewportHeight } from '@/lib/useHeldViewportHeight';
-import { PAIR_GAP, PHASES, REVEAL_SPAN, swapStart } from '@/lib/sequenceTiming';
+import {
+  captionArrivals,
+  clipWindow,
+  PHASES,
+  REVEAL_SPAN,
+  SWAP_AT,
+} from '@/lib/sequenceTiming';
 import { SequenceCaptions } from './SequenceCaptions';
 
 const bebas = Bebas_Neue({ subsets: ['latin', 'latin-ext'], weight: '400' });
@@ -103,15 +108,60 @@ const LONGEST_CAPTION = captionLines.reduce((a, b) => (b.length > a.length ? b :
 const CAPTION_PROBE_PX = 100;
 /** …and the line box that size sets, as a multiple of it. */
 const CAPTION_LINE = 1.15;
-/** Clearance kept around the tile grid when it is scrolled into view. */
-const TILES_MARGIN = 16;
 /** Scroll runway, in viewport heights. */
 export const RUNWAY_VH = 3;
 /** Progress at which the first image takes over from the bouncing ball. */
 const BALL_HANDOFF = 0.005;
 
+/**
+ * How much of the scroll a phone's landing may fall short by and still count as
+ * arrived.
+ *
+ * The sequence finishes on an exact scroll position, and the glide below aims
+ * at it — but a smooth scroll settles where the browser's own animation leaves
+ * it, which is routinely a fraction of a pixel short. Without this the five
+ * pictures sit in their tiles, lit and titled, with pointer events still
+ * switched off: the reported "sometimes the tiles don't open". Small enough
+ * that the flight is 99.7% done inside it, so nothing visibly snaps.
+ */
+const LANDING_SLACK = 8;
+
+/**
+ * How long the page is held at the landing when it is reached from BELOW.
+ *
+ * Coming back up the page from the footer, the tile row arrives and is gone
+ * again in the same flick — the sequence starts pulling itself apart before you
+ * have registered that the tiles were ever there. So the scroll is caught on
+ * that one frame, which kills a fling's momentum, and let go again a moment
+ * later: keep pushing up and you carry straight on into the sequence.
+ *
+ * Long enough to read as a stop, short enough that a visitor who means to go
+ * further never feels held. Only ever on the way UP — going down, the landing
+ * is where you were heading anyway and stopping there would be in the way.
+ */
+const LANDING_BRAKE_MS = 350;
+
 /** Once landed, each image settles from 100% to 95% of its tile. */
 const FINAL_SCALE = 0.95;
+
+/**
+ * What a phone's landed tile looks like: the photograph held back to a little
+ * over a third and taken just off focus, so the five read as a soft ground for
+ * their titles rather than five competing pictures.
+ *
+ * Only the PICTURE is softened. The title sits outside it and stays crisp at
+ * full strength, which is the whole point of putting it behind glass.
+ */
+const MOBILE_TILE_OPACITY = 0.4;
+const MOBILE_TILE_BLUR_PX = 3;
+/**
+ * …and how much the softened picture is scaled up underneath. A blur samples
+ * past the element's own edge, where there is nothing, so an unscaled one fades
+ * out at all four sides and the tile loses its corners. 5% of the shortest tile
+ * a phone produces is comfortably more than the radius above, which is all the
+ * overscan has to beat — any more than that is crop thrown away for nothing.
+ */
+const MOBILE_TILE_OVERSCAN = 1.1;
 /** Selection, once the images are tiles: picked grows 5%, the rest shrink 5%. */
 const SELECTED_SCALE = 1.05;
 const UNSELECTED_SCALE = 0.95;
@@ -120,20 +170,20 @@ const N = heroSequenceImages.length; // 5
 
 /** Phase boundaries — shared with the captions, which arrive on them. */
 const P = PHASES;
-/** How many lines each image carries: one, or a pair. */
-const LINES = captionGroups.map((g) => g.length);
-/**
- * Where each image gives way — the moment it starts to shrink AND the next one
- * starts to grow, since those are one exchange. An image reaches full size on
- * its phase boundary and then HOLDS there for as long as its caption takes to
- * write itself: a line's worth of scrolling for one, two for a pair. Nothing
- * moves out from under a word still being revealed, and nothing new arrives
- * over one either.
- */
-const SWAP = LINES.map((n, i) => swapStart(i, n));
+/** Where each image gives way — see `@/lib/sequenceTiming`, which lays the
+ *  whole timeline out from how long each beat needs. */
+const SWAP = SWAP_AT;
 /** The fifth image's shrink is the flight to the tiles, so the last swap is
  *  where every image sets off for its place in the row. */
 const FINAL_START = SWAP[N - 1];
+/**
+ * Where the phone's self-scroll re-arms: the moment the last image reaches full
+ * size, one beat before it gives way. The glide fires on the way DOWN past
+ * FINAL_START and can only be loaded again by coming back up past this, so it
+ * happens once per pass — never twice on one scroll, and never at all on a
+ * reload or a WORK link that arrives already past it.
+ */
+const AUTOSCROLL_REARM = P[N];
 /**
  * Where a two-faced slot turns over: the moment its group's second caption
  * arrives, so the picture changes with the word. Read from progress rather than
@@ -141,7 +191,7 @@ const FINAL_START = SWAP[N - 1];
  * `null` for a slot with only one line and nothing to turn to.
  */
 const FLIP_AT: (number | null)[] = captionGroups.map((group, i) =>
-  group.length > 1 ? P[i + 1] + PAIR_GAP : null,
+  group.length > 1 ? captionArrivals[linesBefore(i) + 1] : null,
 );
 /** What a finished image dims to once it has shrunk — it is a marker of where
  *  the sequence has been, not something to look at. Full again by the time it
@@ -254,6 +304,12 @@ function SlotFace({
 
 /** Smoothstep — takes the linear scroll edge off every interpolation. */
 const ease = (v: number) => v * v * (3 - 2 * v);
+/** Whether the visitor has asked for less movement. The one scroll this page
+ *  performs on its own still has to happen — it is what makes the tiles
+ *  reachable — but it arrives instead of travelling. */
+const prefersReducedMotion = () =>
+  typeof window !== 'undefined' &&
+  window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true;
 /** Progress `p` mapped to 0→1 across the window [a, b], clamped. */
 const seg = (p: number, a: number, b: number) =>
   Math.min(1, Math.max(0, (p - a) / (b - a)));
@@ -528,11 +584,27 @@ export function HeroImageSequence() {
   // Last frame's answers, kept only so React is told when one of them actually
   // changes — the scroll itself is read every frame and drives the motion
   // values directly, without a render.
-  const run = useRef({ eff: 0, landed: false, piled: false });
+  const run = useRef({
+    eff: 0,
+    landed: false,
+    piled: false,
+    autoScroll: false,
+    blur: 0,
+    /** Last frame's scroll position — what says which way the page is going. */
+    prevY: 0,
+    /** The landing brake: loaded by being past the landing, spent by firing. */
+    brakeArmed: false,
+    brakeUntil: 0,
+  });
   // Which caption arrangement is in force — one stack across the big image, or
   // one caption per picture travelling with it. Mirrors the same measurement
   // the geometry makes, so the two can never disagree about it.
   const [piled, setPiled] = useState(false);
+  // How far a phone's landed tile is blurred, in px. Zero everywhere else,
+  // which is also what says "don't soften these at all". React state rather
+  // than a motion value because it changes on a resize and at no other time,
+  // and because it is a plain CSS transition rather than a scrubbed one.
+  const [tileBlur, setTileBlur] = useState(0);
 
   // The height everything here is measured against, held still while a phone
   // slides its chrome. Mirrored into a ref so the rAF loop below reads the
@@ -668,16 +740,32 @@ export function HeroImageSequence() {
         const tileDocTop = window.scrollY + tiles[0].top;
         end = Math.max(vh * 0.5, tileDocTop - vh * 0.5);
 
-        // Where <MainLayout> gives the tile row a screen-tall band to sit in
-        // the middle of, the landing is simply that band filling the screen:
-        // stop on its top edge and the arrangement it lays out — header, equal
-        // air, tiles, equal air, footer — is what the sequence resolves into.
-        // Asked of the band itself rather than of a breakpoint, so the two
-        // cannot disagree about which layout is in force.
-        const band = document.getElementById(WORK_ANCHOR);
-        const bandRect = band?.getBoundingClientRect();
-        if (bandRect && bandRect.height >= vh - 1) {
-          end = Math.max(vh * 0.5, window.scrollY + bandRect.top);
+        if (mobile) {
+          // A phone's five tiles are one column a whole screen tall, so half a
+          // screen of clearance put the landing halfway down them: the bottom
+          // two arrived below the fold — lit, titled, clickable and invisible.
+          // The landing is the column FRAMED instead, its top edge just under
+          // the fixed chrome, so all five are on the screen at the moment the
+          // sequence ends.
+          end = Math.max(vh * 0.5, tileDocTop - HEADER_H);
+        } else {
+          // Where <MainLayout> gives the tile row a screen-tall band to sit in
+          // the middle of, the landing is simply that band filling the screen:
+          // stop on its top edge and the arrangement it lays out — header,
+          // equal air, tiles, equal air, footer — is what the sequence resolves
+          // into.
+          //
+          // Only when the band is CLOSED. A band with a gallery open is a whole
+          // screen tall too, and for a reason that has nothing to do with
+          // centring — so measuring the height alone moved the finish line the
+          // instant a tile was tapped, which un-landed the tiles and closed the
+          // gallery again a few frames later.
+          const bandEl = document.getElementById(WORK_ANCHOR);
+          const bandRect =
+            bandEl?.dataset.tileBand === 'closed' ? bandEl.getBoundingClientRect() : null;
+          if (bandRect && bandRect.height >= vh - 1) {
+            end = Math.max(vh * 0.5, window.scrollY + bandRect.top);
+          }
         }
       }
 
@@ -686,16 +774,75 @@ export function HeroImageSequence() {
         s.piled = mobile;
         setPiled(mobile);
       }
+      const blur = mobile && tiles.length ? MOBILE_TILE_BLUR_PX : 0;
+      if (blur !== s.blur) {
+        s.blur = blur;
+        setTileBlur(blur);
+      }
 
       // Progress IS the scroll position, and nothing else. Because it is a pure
       // function of `y`, scrolling up walks the images backwards and scrolling
       // down resumes from precisely the same frame — no accumulated error
       // either way, no state to get out of step, and no moment at which the
       // page is doing something the hand on the wheel did not ask for.
-      s.eff = Math.min(1, Math.max(0, window.scrollY / end));
+      const rawY = window.scrollY;
+      let y = rawY;
+
+      // --- A brake on the way back up --------------------------------------
+      // On the frame the images become tiles, and only when that frame is
+      // reached from BELOW — coming back up the page rather than arriving at
+      // the end of the sequence. The scroll is set down on the landing and held
+      // there for a moment, which is enough to stop a fling dead; push on and
+      // it lets go, and the sequence runs backwards from exactly where it
+      // stopped. See LANDING_BRAKE_MS.
+      //
+      // It arms by being past the landing and disarms by firing, so it happens
+      // once per journey up and cannot become a wall the visitor has to fight
+      // through twice.
+      const now = performance.now();
+      const holding = now < s.brakeUntil;
+      const crossing = s.brakeArmed && tiles.length > 0 && rawY < end && s.prevY >= end;
+      if (crossing) {
+        s.brakeArmed = false;
+        s.brakeUntil = now + LANDING_BRAKE_MS;
+      }
+      if ((crossing || holding) && rawY < end) {
+        window.scrollTo(0, end);
+        y = end;
+      } else if (!holding && rawY > end + LANDING_SLACK) {
+        s.brakeArmed = true;
+      }
+
+      s.eff = Math.min(1, Math.max(0, y / end));
+      // …with the last few pixels of it called finished. See LANDING_SLACK: a
+      // smooth scroll stops where the browser leaves it, and a landing a
+      // fraction of a pixel short is a landing with nothing clickable on it.
+      if (end - y <= LANDING_SLACK) s.eff = 1;
+      s.prevY = y;
 
       progress.set(s.eff);
       geoTick.set(geoTick.get() + 1);
+
+      // --- The phone's last beat scrolls itself ----------------------------
+      // The tile column fills the screen on a phone, and the sequence's own
+      // pile sits higher up the page than the column does — so at the moment
+      // the last picture starts to shrink, the visitor is watching five images
+      // set off for a place they cannot see. From here the page finishes the
+      // journey itself.
+      //
+      // It is not a jump past anything. Progress IS the scroll, so this glide
+      // plays the last beat out exactly as a thumb would: the pictures fly, the
+      // titles come up, and it stops on the frame the sequence ends on. A hand
+      // on the screen interrupts it, as it interrupts any smooth scroll.
+      if (mobile) {
+        if (s.eff < AUTOSCROLL_REARM) s.autoScroll = true;
+        else if (s.autoScroll && s.eff >= FINAL_START && y < end - LANDING_SLACK) {
+          s.autoScroll = false;
+          window.scrollTo({ top: end, behavior: prefersReducedMotion() ? 'auto' : 'smooth' });
+        }
+      } else {
+        s.autoScroll = false;
+      }
 
       // The images only become tiles once the fifth is actually home — and stop
       // being tiles again if the sequence is scrolled back off the end.
@@ -704,21 +851,12 @@ export function HeroImageSequence() {
         s.landed = home;
         setLanded(home);
         if (!home) selectedTile.set(null);
-        // On a phone the tiles stack three rows deep and land half off-screen,
-        // so bring the whole grid into view. DOWN only: scrolling up would drop
-        // progress back under 1, un-land the tiles and re-trigger this.
-        else if (mobile && tiles.length) {
-          const gridTop = window.scrollY + tiles[0].top;
-          const last = tiles[tiles.length - 1];
-          const gridH = last.top + last.h - tiles[0].top;
-          const target =
-            gridH + 2 * TILES_MARGIN <= vh
-              ? gridTop - (vh - gridH) / 2 // fits: centre it
-              : gridTop - TILES_MARGIN; // taller than the screen: top-align
-          if (target > window.scrollY) {
-            window.scrollTo({ top: target, behavior: 'smooth' });
-          }
-        }
+        // Nothing else happens here. A phone used to be scrolled to bring the
+        // tile grid into view at this moment, from back when the tiles stacked
+        // three rows deep and landed half off-screen. They fill the screen on
+        // their own now, so that scroll had nothing left to correct — it just
+        // carried the page past the landing and let it snap back, which read as
+        // the whole page lurching down and the tiles jumping into place.
       }
 
     };
@@ -776,6 +914,7 @@ export function HeroImageSequence() {
             geo={geo}
             landed={landed}
             selectedId={selectedId}
+            softenPx={tileBlur}
           />
         ))}
 
@@ -819,6 +958,7 @@ function SequenceImage({
   geo,
   landed,
   selectedId,
+  softenPx,
 }: {
   image: HeroSequenceImage;
   /** The tile this image becomes when it lands — its title and gallery. */
@@ -830,6 +970,9 @@ function SequenceImage({
   /** True once the flight is home — the image settles to 90% and is a tile. */
   landed: boolean;
   selectedId: string | null;
+  /** How far to blur the landed picture, in px. 0 on a wide screen, where the
+   *  tiles are photographs rather than a ground for their titles. */
+  softenPx: number;
 }) {
   // Every transform reads the ROOT motion values directly — chaining a derived
   // motion value into the array form of useTransform silently freezes it.
@@ -871,8 +1014,9 @@ function SequenceImage({
   // itself — to the frame the slot turns over, after which the clip is behind
   // a photograph. The whole clip is spent across that stretch.
   const hasClip = /\.mp4$/i.test(image.src);
+  const window_ = clipWindow(index);
   const clipScrub = useTransform(progress, (p) =>
-    seg(p, P[index + 1], FLIP_AT[index] ?? P[index + 2]),
+    window_ ? seg(p, window_[0], window_[1]) : 0,
   );
 
   // A slot with two faces turns over where its group's second caption arrives,
@@ -897,6 +1041,9 @@ function SequenceImage({
   const scale = landed
     ? FINAL_SCALE * (isSelected ? SELECTED_SCALE : isOther ? UNSELECTED_SCALE : 1)
     : 1;
+  /** Only once it IS a tile, and only where tiles are a ground for their
+   *  titles. Mid-flight it is still a photograph and stays one. */
+  const softened = landed && softenPx > 0;
 
   return (
     <motion.div
@@ -928,53 +1075,83 @@ function SequenceImage({
         onClick={() => selectedTile.set(isSelected ? null : tile.id)}
         className="relative block h-full w-full cursor-pointer text-left outline-none"
       >
-        {/* A slot with a second face turns over to reveal it. The two are the
-            faces of one card: `preserve-3d` on the turning element and
-            `backface-hidden` on each, so exactly one is ever showing and the
-            edge sweeps through as it goes. A slot without a back is the same
-            markup with nothing behind it, and never turns. */}
+        {/* The picture, and only the picture. Its own wrapper so a phone can
+            hold it back and put it behind glass once it is a tile, without the
+            scrim, the title or the selection ring going soft with it. Scaled up
+            underneath so the blur's faded edge falls outside the crop rather
+            than eating the tile's corners. */}
         <span
-          className="absolute inset-0 block [perspective:1400px]"
-          style={{ transformStyle: 'preserve-3d' }}
+          className="absolute inset-0 block transition-[opacity,filter] duration-500"
+          style={
+            softened
+              ? {
+                  opacity: MOBILE_TILE_OPACITY,
+                  filter: `blur(${softenPx}px)`,
+                  transform: `scale(${MOBILE_TILE_OVERSCAN})`,
+                }
+              : undefined
+          }
         >
-          <motion.span
-            className="absolute inset-0 block"
-            initial={false}
-            animate={{ rotateY: flipped ? 180 : 0 }}
-            transition={{ duration: FLIP_MS / 1000, ease: [0.65, 0, 0.35, 1] }}
+          {/* A slot with a second face turns over to reveal it. The two are the
+              faces of one card: `preserve-3d` on the turning element and
+              `backface-hidden` on each, so exactly one is ever showing and the
+              edge sweeps through as it goes. A slot without a back is the same
+              markup with nothing behind it, and never turns. */}
+          <span
+            className="absolute inset-0 block [perspective:1400px]"
             style={{ transformStyle: 'preserve-3d' }}
           >
-            <span className="absolute inset-0 block [backface-visibility:hidden]">
-              <SlotFace
-                src={image.src}
-                poster={image.poster}
-                alt={image.alt}
-                scrub={hasClip ? clipScrub : null}
-              />
-            </span>
-            {image.back && (
-              <span
-                className="absolute inset-0 block [backface-visibility:hidden]"
-                style={{ transform: 'rotateY(180deg)' }}
-              >
-                <SlotFace src={image.back} alt={image.backAlt ?? image.alt} />
+            <motion.span
+              className="absolute inset-0 block"
+              initial={false}
+              animate={{ rotateY: flipped ? 180 : 0 }}
+              transition={{ duration: FLIP_MS / 1000, ease: [0.65, 0, 0.35, 1] }}
+              style={{ transformStyle: 'preserve-3d' }}
+            >
+              <span className="absolute inset-0 block [backface-visibility:hidden]">
+                <SlotFace
+                  src={image.src}
+                  poster={image.poster}
+                  alt={image.alt}
+                  scrub={hasClip ? clipScrub : null}
+                />
               </span>
-            )}
-          </motion.span>
+              {image.back && (
+                <span
+                  className="absolute inset-0 block [backface-visibility:hidden]"
+                  style={{ transform: 'rotateY(180deg)' }}
+                >
+                  <SlotFace src={image.back} alt={image.backAlt ?? image.alt} />
+                </span>
+              )}
+            </motion.span>
+          </span>
         </span>
         {/* Scrim + title: the tile's furniture, faded in only once it IS a
-            tile, so the flight itself stays a clean photograph. */}
-        <span
-          aria-hidden
-          className={`absolute inset-0 bg-gradient-to-t from-black/80 via-black/40 to-black/25 transition-opacity duration-500 ${
-            landed ? 'opacity-100' : 'opacity-0'
-          }`}
-        />
+            tile, so the flight itself stays a clean photograph.
+
+            Not where the picture is already softened, though. The scrim is
+            there to hold a photograph back far enough for a title to sit on it,
+            which is precisely what the blur and the 40% do — laying both on
+            leaves a tile that is 8% photograph and 92% black, and the picture
+            may as well not be there. One or the other, never both. */}
+        {!softened && (
+          <span
+            aria-hidden
+            className={`absolute inset-0 bg-gradient-to-t from-black/80 via-black/40 to-black/25 transition-opacity duration-500 ${
+              landed ? 'opacity-100' : 'opacity-0'
+            }`}
+          />
+        )}
         {isSelected && (
           <span aria-hidden className="absolute inset-0 ring-2 ring-inset ring-white/40" />
         )}
+        {/* On a phone the title is centred across its strip — the strips are
+            wide and shallow there, and a line hung on the left edge of one
+            reads as a caption rather than as the tile's name. From `sm` up the
+            tiles are portraits again and it goes back to the bottom left. */}
         <span
-          className={`absolute inset-0 flex flex-col justify-end p-4 transition-opacity duration-500 ${
+          className={`absolute inset-0 flex flex-col items-center justify-end p-4 text-center transition-opacity duration-500 sm:items-stretch sm:text-left ${
             landed ? 'opacity-100' : 'opacity-0'
           }`}
         >
