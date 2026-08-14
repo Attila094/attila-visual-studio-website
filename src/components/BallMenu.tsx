@@ -25,11 +25,115 @@ const MOBILE_LINKS = LINKS;
  *  height, same baseline. Sized at 80% of the original. */
 const PILL_PAD = 'p-[4px] sm:p-[6px]';
 const PILL_LINK =
-  'block rounded-full px-[8px] py-[5.6px] text-[7.2px] font-bold uppercase tracking-[0.14em] transition-colors sm:px-[16px] sm:text-[8px]';
-const PILL_BG =
-  'absolute inset-0 z-0 rounded-full bg-white shadow-[0_10px_30px_rgba(0,0,0,0.12)] ring-1 ring-black/5';
-const INACTIVE = 'text-[#6f6f6f] hover:text-ink';
-const ACTIVE = 'text-[#3a3a3a]';
+  'block rounded-full px-[8px] py-[5.6px] text-[7.2px] uppercase tracking-[0.14em] transition-colors sm:px-[16px] sm:text-[8px]';
+
+/**
+ * Which page you are on is carried by WEIGHT, not by colour.
+ *
+ * The pills used to be solid white with two greys doing the work — the darker
+ * grey meaning "you are here". On glass over a black page those greys are
+ * barely there at all, so both went white and the distinction moved to the one
+ * axis that still reads at 7px: the current page is bold, everything else is
+ * regular. Held apart from PILL_LINK because the weight now belongs to the
+ * STATE rather than to the pill.
+ */
+const INACTIVE = 'font-normal text-white/70 hover:text-white';
+const ACTIVE = 'font-bold text-white';
+
+/**
+ * The background every pill wears: one pane of glass. The corner CONTACT
+ * button, the phone's MENU pill and the wide bar are the same object at three
+ * widths, which is the point — they used to be solid white and are now all
+ * glass.
+ *
+ * Three things stacked, because one property does not make glass. The blur and
+ * the saturation bend and enrich whatever is behind it — the pill carries
+ * almost no colour of its own. The insets are the lit near edge and the dimmer
+ * far edge of something with THICKNESS. And the warp below refracts the
+ * backdrop, which is what stops it reading as a frosted sticker.
+ *
+ * The tint is 0.072 — four tenths off the 0.12 it started at, so the pane is
+ * that much more of the page behind it and that much less of itself. Only the
+ * FILL is thinned: the edges and the highlight are the glass's shape rather
+ * than its substance, and fading those would have flattened it rather than
+ * making it clearer.
+ */
+const PILL_BG = 'absolute inset-0 z-0 rounded-full ring-1 ring-inset ring-white/30';
+const PILL_BG_STYLE = {
+  backgroundColor: 'rgba(255,255,255,0.072)',
+  // The lit top edge, as a background layer rather than a child element. One
+  // less box inside the pill is one less thing to clip, and a background is
+  // shaped by the element's own radius for free.
+  backgroundImage:
+    'linear-gradient(to bottom, rgba(255,255,255,0.22), rgba(255,255,255,0) 55%)',
+  backdropFilter: 'blur(14px) saturate(180%)',
+  WebkitBackdropFilter: 'blur(14px) saturate(180%)',
+  boxShadow:
+    'inset 0 1px 0 rgba(255,255,255,0.5), inset 0 -1px 0 rgba(255,255,255,0.14), 0 10px 30px rgba(0,0,0,0.35)',
+} as const;
+/**
+ * The refraction, on its own layer on purpose.
+ *
+ * `backdrop-filter: url()` is not carried everywhere — Safari in particular
+ * takes the blur above and not this. Kept apart, a browser that cannot do it
+ * simply drops this one layer and still gets the blur, the tint and the edges;
+ * put them in one declaration and an unsupported `url()` would invalidate the
+ * whole thing and leave a flat transparent box.
+ */
+const GLASS_WARP_STYLE = {
+  backdropFilter: 'url(#pill-glass-warp)',
+  WebkitBackdropFilter: 'url(#pill-glass-warp)',
+} as const;
+
+/** Fully round: what the pills wear except the phone's menu while it is open. */
+const PILL_R_FULL = 9999;
+
+/**
+ * The refraction layer, carrying its OWN rounded corners.
+ *
+ * It has to. A backdrop-filtered box sitting inside an `overflow: hidden`
+ * rounded parent is clipped by that parent WITHOUT antialiasing in Chrome, and
+ * the result is exactly the stair-stepped rim this had — the pill looked
+ * low-resolution along its curve. Given the radius itself, the layer clips
+ * against its own border-box, which is antialiased, and the parent needs no
+ * overflow clip at all. The radius is passed in rather than assumed because the
+ * phone's menu opens from a capsule into a card and this must follow it.
+ */
+function GlassPane({ radius }: { radius: number }) {
+  return (
+    <motion.span
+      aria-hidden
+      initial={false}
+      animate={{ borderRadius: radius }}
+      transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
+      className="pointer-events-none absolute inset-0"
+      style={GLASS_WARP_STYLE}
+    />
+  );
+}
+
+/**
+ * Where the phone's chrome sits: flush with the tile column, not with the
+ * window.
+ *
+ * The tiles are inset 16px by their band's padding and a further 9px by the 95%
+ * a landed tile settles to, so their VISIBLE edges — the ones the eye lines up
+ * against — fall 25px from each side of the screen. The pills used to sit at
+ * 12px and overhang them by a clear 13px. From `sm` up the row is a different
+ * shape and the original offsets come back.
+ *
+ * Written out in full rather than built from a constant: Tailwind generates
+ * utilities by scanning the source for complete class names, so a class
+ * assembled from a template literal is a class that never gets built.
+ */
+const MENU_X = 'right-[25px]';
+const CONTACT_X = 'left-[25px] sm:left-6';
+/**
+ * …and the menu pill runs a tenth wider than its content asks for, all of it
+ * added on the LEFT so it grows inward, away from the edge it is anchored to.
+ * 6.2px is a tenth of the 62px it measures at, plus the 4px it already had.
+ */
+const MOBILE_MENU_LEAD = 'pl-[10.2px]';
 
 /** Phone menu pill corners. Closed it is a capsule — at the bar's 30px height
  *  that is an effective 15px radius; opened, the corners come in to half that
@@ -168,14 +272,61 @@ export function BallMenu() {
 
       {/* CONTACT — same pill, same reveal, mirrored into the top-left corner
           and vertically aligned with the menu (identical top offset). */}
-      <nav aria-label="Kapcsolat" className="fixed left-3 top-3 z-[75] sm:left-6 sm:top-5">
+      {/* The glass pill's refraction. Rendered once, referenced by id: a
+          turbulence field, softened so it warps in slow swells rather than
+          grain, driving a displacement of the backdrop. Zero-sized and hidden,
+          since only the filter is wanted, never the element. */}
+      <svg aria-hidden width="0" height="0" className="absolute" focusable="false">
+        <defs>
+          {/* The region runs well outside the pill on purpose. A displacement
+              pulls each pixel from somewhere NEARBY, and at the rim that
+              somewhere lies outside the element — with the region stopping at
+              its edge those samples came back as transparent black and drew a
+              broken dark fringe all the way round, which is most of what read
+              as "pixelated". Given room to sample beyond itself, the warp has
+              real pixels to fetch and the rim stays clean.
+
+              sRGB because the default linear space bands visibly across a
+              gradient this shallow; one octave and a modest scale because the
+              want is a slow swell in the glass, not grain. */}
+          <filter
+            id="pill-glass-warp"
+            x="-50%"
+            y="-50%"
+            width="200%"
+            height="200%"
+            colorInterpolationFilters="sRGB"
+          >
+            <feTurbulence
+              type="fractalNoise"
+              baseFrequency="0.015"
+              numOctaves={1}
+              seed={7}
+              result="noise"
+            />
+            <feGaussianBlur in="noise" stdDeviation={2} result="swell" />
+            <feDisplacementMap
+              in="SourceGraphic"
+              in2="swell"
+              scale={8}
+              xChannelSelector="R"
+              yChannelSelector="G"
+            />
+          </filter>
+        </defs>
+      </svg>
+
+      <nav aria-label="Kapcsolat" className={`fixed top-3 z-[75] sm:top-5 ${CONTACT_X}`}>
         <div className="relative">
           <motion.div
             initial={false}
             animate={{ opacity: asMenu ? 1 : 0 }}
             transition={{ duration: 0.3, delay: barDelay }}
             className={PILL_BG}
-          />
+            style={PILL_BG_STYLE}
+          >
+            <GlassPane radius={PILL_R_FULL} />
+          </motion.div>
           <motion.div
             style={{ pointerEvents: asMenu ? 'auto' : 'none' }}
             initial={false}
@@ -186,7 +337,7 @@ export function BallMenu() {
             <Link
               href="/contact"
               data-active={contactActive}
-              className={`${PILL_LINK} ${contactActive ? `${ACTIVE} bg-[#cfcfcf]` : INACTIVE}`}
+              className={`${PILL_LINK} ${contactActive ? ACTIVE : INACTIVE}`}
             >
               Contact
             </Link>
@@ -198,7 +349,7 @@ export function BallMenu() {
       <nav
         aria-label="Fő navigáció"
         data-mobile-menu
-        className="fixed right-3 top-3 z-[75] sm:hidden"
+        className={`fixed top-3 z-[75] sm:hidden ${MENU_X}`}
       >
         <div className="relative">
           <motion.div
@@ -209,13 +360,16 @@ export function BallMenu() {
               borderRadius: { duration: 0.28, ease: [0.22, 1, 0.36, 1] },
             }}
             className={PILL_BG}
-          />
+            style={PILL_BG_STYLE}
+          >
+            <GlassPane radius={open ? PILL_R_OPEN : PILL_R} />
+          </motion.div>
           <motion.div
             style={{ pointerEvents: asMenu ? 'auto' : 'none' }}
             initial={false}
             animate={{ opacity: asMenu ? 1 : 0 }}
             transition={{ duration: 0.28, ease: 'easeOut', delay: barDelay }}
-            className={`relative z-20 ${PILL_PAD}`}
+            className={`relative z-20 ${PILL_PAD} ${MOBILE_MENU_LEAD}`}
           >
             <button
               type="button"
@@ -276,7 +430,10 @@ export function BallMenu() {
             animate={{ opacity: asMenu ? 1 : 0 }}
             transition={{ duration: 0.3, delay: barDelay }}
             className={PILL_BG}
-          />
+            style={PILL_BG_STYLE}
+          >
+            <GlassPane radius={PILL_R_FULL} />
+          </motion.div>
           <ul
             style={{ pointerEvents: asMenu ? 'auto' : 'none' }}
             className={`relative z-20 flex items-center gap-[1.6px] sm:gap-[2.4px] ${PILL_PAD}`}
@@ -293,9 +450,7 @@ export function BallMenu() {
                 >
                   <Link
                     href={link.href}
-                    className={`${PILL_LINK} ${active ? ACTIVE : INACTIVE} ${
-                      !isHome && active ? 'bg-[#cfcfcf]' : ''
-                    }`}
+                    className={`${PILL_LINK} ${active ? ACTIVE : INACTIVE}`}
                   >
                     {link.label}
                   </Link>
