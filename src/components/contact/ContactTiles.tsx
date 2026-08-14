@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Bebas_Neue, Montserrat } from 'next/font/google';
-import { AnimatePresence, motion } from 'framer-motion';
+import { AnimatePresence, motion, useReducedMotion, type Transition } from 'framer-motion';
 import { contactCategories, type ContactCategory } from '@/content/contactServices';
 import { services, type ServiceItem } from '@/content/services';
 import { PanTrack } from '@/components/PanTrack';
@@ -19,6 +19,50 @@ const PANEL_BLUR = 18;
 /** Fallback fill for an item with no artwork yet. */
 const PLATE = '#333333';
 
+// The pulse. A picture swells 5% and settles back, a second each way; the next
+// tile starts a second after the one before it has finished, so a row reads
+// left to right. Then the whole run repeats and stops — it is a cue to click,
+// and a cue that never stops is wallpaper.
+const PULSE_SCALE = 1.05;
+/** Seconds per movement — out, and back. */
+const PULSE_MOVE = 1;
+/** Between one tile settling and the next one starting. */
+const PULSE_GAP = 1;
+/** Between the last tile of a run and the first tile of the next. */
+const RUN_GAP = 3;
+/** The four covers run three times from mount; a category's services, which
+ *  exist only once their tile is opened, run twice from that moment. */
+const RUNS_COVER = 3;
+const RUNS_SERVICE = 2;
+
+const PULSE = PULSE_MOVE * 2;
+/** Tile to tile: a whole pulse plus the gap after it. */
+const STAGGER = PULSE + PULSE_GAP;
+
+/**
+ * One tile's share of the pulse.
+ *
+ * The period runs from a run's first tile to the next run's first tile, and
+ * every tile keeps its own offset inside the run — so one figure serves the
+ * whole row. It depends on how many tiles that row holds, which is why it is
+ * worked out per call rather than fixed: the categories carry three services,
+ * four or five, and a row of three left on a row of five's period would sit
+ * idle for two seconds it was never given.
+ */
+function pulseTransition(order: number, count: number, runs: number): Transition {
+  const period = STAGGER * (count - 1) + PULSE + RUN_GAP;
+  return {
+    duration: PULSE,
+    times: [0, 0.5, 1],
+    ease: 'easeInOut',
+    delay: order * STAGGER,
+    repeat: runs - 1,
+    // Framer counts this from the end of one repetition to the start of the
+    // next, so the whole period less the pulse itself.
+    repeatDelay: period - PULSE,
+  };
+}
+
 function tileLayoutId(id: string) {
   return `contact-tile-${id}`;
 }
@@ -32,14 +76,19 @@ function tileLayoutId(id: string) {
  */
 function ServiceTile({
   item,
+  order,
+  count,
   picked,
   onToggle,
 }: {
   item: ServiceItem;
+  order: number;
+  count: number;
   picked: boolean;
   onToggle: () => void;
 }) {
   const video = useRef<HTMLVideoElement>(null);
+  const reduce = useReducedMotion();
 
   const play = useCallback(() => {
     void video.current?.play().catch(() => {});
@@ -72,34 +121,44 @@ function ServiceTile({
           item.video || item.pan ? '' : 'group-hover:scale-[1.03]'
         }`}
       >
-        {item.pan ? (
-          <PanTrack src={item.pan} />
-        ) : (
-          item.image && (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={item.image}
-              alt=""
-              loading="lazy"
-              decoding="async"
-              className="absolute inset-0 h-full w-full object-cover"
+        {/* The whole picture layer pulses, whichever kind it is — a still, a
+            clip or a panorama — so the row keeps one beat. It mounts with the
+            panel, which is what starts the run the moment the tile opens. */}
+        <motion.span
+          className="absolute inset-0"
+          initial={{ scale: 1 }}
+          animate={reduce ? { scale: 1 } : { scale: [1, PULSE_SCALE, 1] }}
+          transition={pulseTransition(order, count, RUNS_SERVICE)}
+        >
+          {item.pan ? (
+            <PanTrack src={item.pan} />
+          ) : (
+            item.image && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={item.image}
+                alt=""
+                loading="lazy"
+                decoding="async"
+                className="absolute inset-0 h-full w-full object-cover"
+              />
+            )
+          )}
+          {item.video && (
+            <video
+              ref={video}
+              src={item.video}
+              poster={item.image}
+              muted
+              loop
+              playsInline
+              preload="none"
+              aria-hidden
+              tabIndex={-1}
+              className="absolute inset-0 h-full w-full object-cover opacity-0 transition-opacity duration-300 group-hover:opacity-100"
             />
-          )
-        )}
-        {item.video && (
-          <video
-            ref={video}
-            src={item.video}
-            poster={item.image}
-            muted
-            loop
-            playsInline
-            preload="none"
-            aria-hidden
-            tabIndex={-1}
-            className="absolute inset-0 h-full w-full object-cover opacity-0 transition-opacity duration-300 group-hover:opacity-100"
-          />
-        )}
+          )}
+        </motion.span>
       </span>
       <span
         className={`${montserrat.className} mt-2 block break-words text-xs lowercase leading-snug sm:text-sm ${
@@ -113,18 +172,31 @@ function ServiceTile({
 }
 
 /** The closed state: cover art, number, heading. */
-function TileFace({ category }: { category: ContactCategory }) {
+function TileFace({ category, order }: { category: ContactCategory; order: number }) {
+  const reduce = useReducedMotion();
+
   return (
     <>
       <span className="relative block aspect-[3/4] overflow-hidden rounded-2xl bg-white/5 [container-type:inline-size]">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src={category.image}
-          alt=""
-          loading="lazy"
-          decoding="async"
-          className="absolute inset-0 h-full w-full object-cover transition-transform duration-500 ease-out group-hover:scale-[1.06]"
-        />
+        {/* The pulse rides on its own layer rather than on the picture, because
+            the picture already answers a hover with a scale of its own and the
+            two would be writing the same transform over each other. Nested,
+            they simply multiply. */}
+        <motion.span
+          className="absolute inset-0"
+          initial={{ scale: 1 }}
+          animate={reduce ? { scale: 1 } : { scale: [1, PULSE_SCALE, 1] }}
+          transition={pulseTransition(order, contactCategories.length, RUNS_COVER)}
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={category.image}
+            alt=""
+            loading="lazy"
+            decoding="async"
+            className="absolute inset-0 h-full w-full object-cover transition-transform duration-500 ease-out group-hover:scale-[1.06]"
+          />
+        </motion.span>
         {/* The scrim is the number's legibility and nothing else's — the heading
             sits below the picture, outside this box — so it darkens whichever
             end the number stands at. Bottom, now: one of these covers is a
@@ -226,7 +298,7 @@ export function ContactTiles({ email }: { email: string }) {
       style={{ minHeight: panelHeight || undefined }}
     >
       <ul className="grid grid-cols-2 gap-x-4 gap-y-8 sm:grid-cols-4">
-        {contactCategories.map((c) => (
+        {contactCategories.map((c, i) => (
           <li key={c.serviceId}>
             <motion.button
               type="button"
@@ -237,7 +309,7 @@ export function ContactTiles({ email }: { email: string }) {
               className="group block w-full text-left"
               aria-expanded={open === c.serviceId}
             >
-              <TileFace category={c} />
+              <TileFace category={c} order={i} />
             </motion.button>
           </li>
         ))}
@@ -278,12 +350,14 @@ export function ContactTiles({ email }: { email: string }) {
             {/* One tile per service in this category, straight from the
                 services page. Short rows simply stop early. */}
             <ul className="mt-4 grid grid-cols-2 gap-x-3 gap-y-5 sm:grid-cols-3 md:grid-cols-5 md:gap-x-4">
-              {service.items.map((item) => {
+              {service.items.map((item, i) => {
                 const key = `${category.serviceId}:${item.label}`;
                 return (
                   <li key={item.label}>
                     <ServiceTile
                       item={item}
+                      order={i}
+                      count={service.items.length}
                       picked={picks.some((p) => p.key === key)}
                       onToggle={() =>
                         togglePick({
