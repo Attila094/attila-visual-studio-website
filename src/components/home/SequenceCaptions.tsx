@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { Montserrat } from 'next/font/google';
+import { Bebas_Neue } from 'next/font/google';
 import { motion, useMotionValue, useTransform, type MotionValue } from 'framer-motion';
 import {
   captionColor,
@@ -11,14 +11,21 @@ import {
 } from '@/content/sequenceCaptions';
 import {
   captionArrivals,
+  captionDimFrom,
+  captionDimSpans,
   captionSpans,
-  DIM_SPAN,
   PHASES,
   STACK_FADE_START,
   SWAP_AT,
 } from '@/lib/sequenceTiming';
 
-const montserrat = Montserrat({ subsets: ['latin', 'latin-ext'], weight: '800' });
+const bebas = Bebas_Neue({ subsets: ['latin', 'latin-ext'], weight: '400' });
+/** Bebas ships a single weight, so the bold has to be inline: next/font's own
+ *  class carries `font-weight: 400` at the same specificity and beats a
+ *  `font-bold` utility. The probe below is set the same way — synthetic bold
+ *  strokes the glyphs outward, so measuring the regular face would size the
+ *  stack off a line narrower than the one that actually gets drawn. */
+const CAPTION_WEIGHT = 700;
 
 /** What a line settles to once the scroll has moved on — present, but behind
  *  the photograph. */
@@ -111,9 +118,12 @@ function CaptionLine({
     return `inset(0 ${(1 - t) * 100}% 0 0)`;
   });
 
+  // Full strength, down to the stack. Where this starts and how long it takes
+  // are per-line, for the same reason the reveal is: the word over the film
+  // holds until it has finished being drawn and then falls away over twice the
+  // scroll, and one shared span cannot say that.
   const opacity = useTransform(progress, (p) => {
-    const arrival = captionArrivals[row];
-    const t = Math.min(1, Math.max(0, (p - arrival) / DIM_SPAN));
+    const t = Math.min(1, Math.max(0, (p - captionDimFrom[row]) / captionDimSpans[row]));
     return 1 + (PARKED_OPACITY - 1) * t;
   });
 
@@ -126,12 +136,13 @@ function CaptionLine({
         style={{
           fontSize,
           opacity,
+          fontWeight: CAPTION_WEIGHT,
           color: captionColor(captionLines[row]),
           // A clip, not a width animation: the line is drawn in full and only
           // what you can see of it changes, so the text never re-wraps.
           clipPath,
         }}
-        className={`${montserrat.className} m-0 whitespace-nowrap text-center uppercase leading-none tracking-[0.02em]`}
+        className={`${bebas.className} m-0 whitespace-nowrap text-center uppercase leading-none tracking-[0.02em]`}
       >
         {captionLines[row]}
       </motion.p>
@@ -257,8 +268,14 @@ export function SequenceCaptions({
       <span
         ref={probe}
         aria-hidden
-        style={{ position: 'fixed', left: -99999, top: 0, fontSize: PROBE_PX }}
-        className={`${montserrat.className} whitespace-nowrap uppercase leading-none tracking-[0.02em]`}
+        style={{
+          position: 'fixed',
+          left: -99999,
+          top: 0,
+          fontSize: PROBE_PX,
+          fontWeight: CAPTION_WEIGHT,
+        }}
+        className={`${bebas.className} whitespace-nowrap uppercase leading-none tracking-[0.02em]`}
       >
         {LONGEST}
       </span>

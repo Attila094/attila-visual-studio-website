@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { Bebas_Neue, Montserrat } from 'next/font/google';
+import { Bebas_Neue } from 'next/font/google';
 import { motion, useMotionValue, useTransform, type MotionValue } from 'framer-motion';
 import { heroSequenceImages, type HeroSequenceImage } from '@/content/heroSequence';
 import { mainTiles } from '@/content/mainTiles';
@@ -24,7 +24,12 @@ import {
 import { SequenceCaptions } from './SequenceCaptions';
 
 const bebas = Bebas_Neue({ subsets: ['latin', 'latin-ext'], weight: '400' });
-const montserrat = Montserrat({ subsets: ['latin', 'latin-ext'], weight: '800' });
+/** Bebas ships a single weight, so the captions' bold has to be inline:
+ *  next/font's own class carries `font-weight: 400` at the same specificity and
+ *  beats a `font-bold` utility. The probe carries it too — synthetic bold
+ *  strokes the glyphs outward, so measuring the regular face would size the
+ *  type off a line narrower than the one actually drawn. */
+const CAPTION_WEIGHT = 700;
 
 /* ================================================================
    Scroll-driven hero image sequence.
@@ -89,14 +94,22 @@ const MOBILE_SIDE_MARGIN = 12;
 /** Where the fixed chrome ends — the nav pills and the docked logo both finish
  *  at 55px. A phone's sequence lands with the tile column's top edge here. */
 const HEADER_H = 56;
-/** A phone caption's type size, as a share of the big image's width. */
-const CAPTION_SIZE = 0.065 * 2.5;
+/**
+ * A phone caption's type size, as a share of the big image's width.
+ *
+ * Raised from 2.5 when the captions became Bebas. It is meant to sit clear of
+ * the screen ceiling below and let that one decide — but Bebas is condensed, so
+ * the same line asks for a good deal less width than it did in Montserrat, the
+ * ceiling rose above this figure, and this became the binding one instead. The
+ * longest line went from filling 96% of a phone to 81%.
+ */
+const CAPTION_SIZE = 0.065 * 3.5;
 /**
  * …under a ceiling: no line may take more than this much of the screen's
  * width. The ceiling is what actually decides the size on a phone — the size
- * above never binds there — so this number IS the type size, and the longest
- * line is what the whole set is measured from, so they all share one size
- * rather than each finding its own and reading as a jumble.
+ * above is deliberately set clear of it — so this number IS the type size, and
+ * the longest line is what the whole set is measured from, so they all share
+ * one size rather than each finding its own and reading as a jumble.
  *
  * 96% leaves the longest line about seven pixels of air at each edge on a 375px
  * screen, which is as close to the edges as type can go and still look placed
@@ -631,8 +644,14 @@ function PiledCaptionLine({
   });
   return (
     <motion.p
-      style={{ fontSize, clipPath, color: captionColor(text), lineHeight: CAPTION_LINE }}
-      className={`${montserrat.className} m-0 whitespace-nowrap text-center uppercase tracking-[0.02em]`}
+      style={{
+        fontSize,
+        clipPath,
+        fontWeight: CAPTION_WEIGHT,
+        color: captionColor(text),
+        lineHeight: CAPTION_LINE,
+      }}
+      className={`${bebas.className} m-0 whitespace-nowrap text-center uppercase tracking-[0.02em]`}
     >
       {text}
     </motion.p>
@@ -798,13 +817,13 @@ export function HeroImageSequence() {
       // Phone captions, sized against the longest line there is — re-read from
       // the probe HERE, every pass, rather than measured once and trusted.
       //
-      // Once was wrong. The first measurement is of the fallback face, which
-      // sets 10.82em against Montserrat's 9.50 for that line, and neither a
-      // `document.fonts.ready` nor a ResizeObserver on the probe reliably
-      // brought the second measurement back — so the type spent the life of the
-      // page 12% small, 316px of a 375px screen where the ceiling had asked for
-      // 360. This cannot go stale: it is one rect read on an element that is
-      // already ours, on a pass that was happening anyway.
+      // Once was wrong. The first measurement is of the fallback face, which is
+      // materially wider than the real one — and wider still now the captions
+      // are Bebas, which is condensed — and neither a `document.fonts.ready`
+      // nor a ResizeObserver on the probe reliably brought the second
+      // measurement back, so the type spent the life of the page small. This
+      // cannot go stale: it is one rect read on an element that is already
+      // ours, on a pass that was happening anyway.
       const probeW = capProbe.current?.getBoundingClientRect().width ?? 0;
       if (probeW > 0) capEm.current = probeW / CAPTION_PROBE_PX;
       const captionSize = mobile
@@ -1037,8 +1056,14 @@ export function HeroImageSequence() {
       <span
         ref={capProbe}
         aria-hidden
-        style={{ position: 'fixed', left: -99999, top: 0, fontSize: CAPTION_PROBE_PX }}
-        className={`${montserrat.className} whitespace-nowrap uppercase tracking-[0.02em]`}
+        style={{
+          position: 'fixed',
+          left: -99999,
+          top: 0,
+          fontSize: CAPTION_PROBE_PX,
+          fontWeight: CAPTION_WEIGHT,
+        }}
+        className={`${bebas.className} whitespace-nowrap uppercase tracking-[0.02em]`}
       >
         {LONGEST_CAPTION}
       </span>

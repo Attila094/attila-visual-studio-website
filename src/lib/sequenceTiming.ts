@@ -129,6 +129,31 @@ export function clipWindow(i: number): [number, number] | null {
 export const DIM_SPAN = 0.1;
 
 /**
+ * Where each line starts to fade back, and over how much scrolling.
+ *
+ * Ordinarily a line begins to give way the moment it arrives: the dim and the
+ * reveal overlap, which is what makes a line feel like it is being written and
+ * handed on in one gesture.
+ *
+ * The word over the film is the exception, and has to be. Its reveal borrows
+ * the film's length — six ordinary reveals — so a dim starting with it was over
+ * and done at a fifth of the way through the word being drawn: the back half of
+ * VIDEOGRÁFIA arrived already parked, and the line was never once seen whole at
+ * full strength. It now waits for its own reveal to finish, stands there at
+ * full strength, and then takes twice as long as the others to fall away.
+ */
+export const captionDimFrom: number[] = LINES.flatMap((_, i) =>
+  lineOffsets(i).map((o, j) => {
+    const arrival = (bounds[i + 1] + o) / TOTAL;
+    return i === CLIP_SLOT && j === 0 ? arrival + lineSpans(i)[j] / TOTAL : arrival;
+  }),
+);
+
+export const captionDimSpans: number[] = LINES.flatMap((_, i) =>
+  lineSpans(i).map((_span, j) => (i === CLIP_SLOT && j === 0 ? DIM_SPAN * 2 : DIM_SPAN)),
+);
+
+/**
  * Where the whole stack starts to leave; it is gone by 1.
  *
  * The last swap, so the captions go exactly as the images set off for their
