@@ -59,7 +59,7 @@ const ACTIVE = 'font-bold text-white';
  * than its substance, and fading those would have flattened it rather than
  * making it clearer.
  */
-const PILL_BG = 'absolute inset-0 z-0 rounded-full ring-1 ring-inset ring-white/30';
+const PILL_BG = 'absolute inset-0 z-0 rounded-full';
 const PILL_BG_STYLE = {
   backgroundColor: 'rgba(255,255,255,0.072)',
   // No gradient. There was a lit wash down the top half — the specular
@@ -67,10 +67,43 @@ const PILL_BG_STYLE = {
   // rather than as light. The tint is flat now: what shapes the glass is the
   // blur, the saturation and the 1px edges, all of which are doing something
   // to the page behind rather than drawing over it.
+  //
+  // The rim is the first shadow here rather than a `ring-1 ring-inset` class.
+  // It had been written as the class and was never once painted: an inline
+  // `boxShadow` replaces the whole property, Tailwind's ring is a box-shadow,
+  // and this declaration was quietly dropping it.
+  boxShadow:
+    'inset 0 0 0 1px rgba(255,255,255,0.3), inset 0 1px 0 rgba(255,255,255,0.5), inset 0 -1px 0 rgba(255,255,255,0.14), 0 10px 30px rgba(0,0,0,0.35)',
+} as const;
+
+/**
+ * How far the filtered glass sits inside the pill's own edge.
+ *
+ * This is the fix for the rim, and it is a fix by avoidance. Chromium composites
+ * ANY backdrop-filtered element onto its own layer and clips that layer to the
+ * border radius with a coarse polygonal approximation rather than an
+ * antialiased curve — the corners come back as cut octagons. It is not the
+ * refraction below: strip the `url()` filter entirely and the plain blur facets
+ * on its own. Nor is it fixable where it happens. A mask-image, an exact-size
+ * SVG rounded-rect mask, `clip-path: inset(… round …)`, `translateZ(0)` and a
+ * parent with `overflow:hidden` + `isolation` were each tried against a
+ * high-contrast backdrop and each still faceted.
+ *
+ * So the filtered layers are pulled two pixels inside instead, and the pill's
+ * visible edge — the tint and the rim above — is drawn by an element carrying
+ * no filter at all, which Chromium antialiases normally. The ragged boundary is
+ * still there; it simply no longer lands where the eye reads the edge.
+ */
+const GLASS_INSET = 2;
+/**
+ * The blur and the saturation, on the inset layer.
+ *
+ * Held apart from the tint above so the tint's element stays unfiltered — the
+ * moment a backdrop-filter goes back onto it, its rim facets again.
+ */
+const GLASS_BLUR_STYLE = {
   backdropFilter: 'blur(14px) saturate(180%)',
   WebkitBackdropFilter: 'blur(14px) saturate(180%)',
-  boxShadow:
-    'inset 0 1px 0 rgba(255,255,255,0.5), inset 0 -1px 0 rgba(255,255,255,0.14), 0 10px 30px rgba(0,0,0,0.35)',
 } as const;
 /**
  * The refraction, on its own layer on purpose.
@@ -90,26 +123,41 @@ const GLASS_WARP_STYLE = {
 const PILL_R_FULL = 9999;
 
 /**
- * The refraction layer, carrying its OWN rounded corners.
+ * The filtered glass: the blur, and the refraction nested inside it.
  *
- * It has to. A backdrop-filtered box sitting inside an `overflow: hidden`
- * rounded parent is clipped by that parent WITHOUT antialiasing in Chrome, and
- * the result is exactly the stair-stepped rim this had — the pill looked
- * low-resolution along its curve. Given the radius itself, the layer clips
- * against its own border-box, which is antialiased, and the parent needs no
- * overflow clip at all. The radius is passed in rather than assumed because the
- * phone's menu opens from a capsule into a card and this must follow it.
+ * Both sit `GLASS_INSET` inside the pill, for the reason set out there, and
+ * both carry their own rounded corners — a backdrop-filtered box clipped by an
+ * `overflow: hidden` parent is clipped without antialiasing too, so the parent
+ * is given no overflow clip and each layer closes over its own border box.
+ *
+ * The radius is passed in rather than assumed because the phone's menu opens
+ * from a capsule into a card and this has to follow it. A capsule keeps the
+ * sentinel radius: `border-radius` already clamps to half the shorter side, so
+ * a narrower box is still a capsule without doing the arithmetic.
  */
 function GlassPane({ radius }: { radius: number }) {
+  const inner = radius >= PILL_R_FULL ? radius : Math.max(0, radius - GLASS_INSET);
+  const settle = { duration: 0.28, ease: [0.22, 1, 0.36, 1] } as const;
   return (
     <motion.span
       aria-hidden
       initial={false}
-      animate={{ borderRadius: radius }}
-      transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
-      className="pointer-events-none absolute inset-0"
-      style={GLASS_WARP_STYLE}
-    />
+      animate={{ borderRadius: inner }}
+      transition={settle}
+      className="pointer-events-none absolute"
+      // Inline rather than an `inset-[2px]` class, so the inset has one source
+      // of truth and cannot drift from the radius arithmetic above it.
+      style={{ ...GLASS_BLUR_STYLE, inset: GLASS_INSET }}
+    >
+      <motion.span
+        aria-hidden
+        initial={false}
+        animate={{ borderRadius: inner }}
+        transition={settle}
+        className="pointer-events-none absolute inset-0"
+        style={GLASS_WARP_STYLE}
+      />
+    </motion.span>
   );
 }
 
