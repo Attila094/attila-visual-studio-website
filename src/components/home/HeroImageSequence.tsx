@@ -138,8 +138,14 @@ const CAPTION_LINE = 1.15;
  * Growing the runway by the same ratio the timeline's total did (130/106)
  * leaves every one of those beats exactly the length it was, in pixels, and
  * gives the reveals a true 2x.
+ *
+ * 4.38 for the same reason again, when FOTOGRÁFIA and GRAFIKA were given
+ * double reveals of their own: the total went 130 → 146, and 3.9 × 146/130 is
+ * this. `end` is not quite proportional to the runway — the hero above it is a
+ * fixed viewport either way — so this was checked by measuring rather than
+ * trusted: every untouched line still takes the same 270px it did.
  */
-export const RUNWAY_VH = 3.9;
+export const RUNWAY_VH = 4.38;
 /** Progress at which the first image takes over from the bouncing ball. */
 const BALL_HANDOFF = 0.005;
 

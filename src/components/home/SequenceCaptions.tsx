@@ -11,7 +11,6 @@ import {
 } from '@/content/sequenceCaptions';
 import {
   captionArrivals,
-  captionDimFrom,
   captionDimSpans,
   captionSpans,
   PHASES,
@@ -118,12 +117,12 @@ function CaptionLine({
     return `inset(0 ${(1 - t) * 100}% 0 0)`;
   });
 
-  // Full strength, down to the stack. Where this starts and how long it takes
-  // are per-line, for the same reason the reveal is: the word over the film
-  // holds until it has finished being drawn and then falls away over twice the
-  // scroll, and one shared span cannot say that.
+  // Full strength on arrival, down to the stack. How long that takes is
+  // per-line, for the same reason the reveal is: the word over the film gives
+  // way across the film's own window rather than over the shared span, so it is
+  // at the stack's strength exactly as the last frame lands.
   const opacity = useTransform(progress, (p) => {
-    const t = Math.min(1, Math.max(0, (p - captionDimFrom[row]) / captionDimSpans[row]));
+    const t = Math.min(1, Math.max(0, (p - captionArrivals[row]) / captionDimSpans[row]));
     return 1 + (PARKED_OPACITY - 1) * t;
   });
 

@@ -49,37 +49,60 @@ const CLIP_SLOT = 2;
 
 const LINES = captionGroups.map((g) => g.length);
 
-/** How long image `i` holds at full size before giving way. */
-const holdRaw = (i: number) =>
-  i === CLIP_SLOT ? VIDEO_RAW + REVEAL_RAW : LINES[i] * REVEAL_RAW;
+/**
+ * Lines whose reveal runs longer than the standard one, as a multiple of it.
+ *
+ * Keyed by the word rather than by its row — the same way the caption colours
+ * are — so a long reveal travels with the line it was given to and cannot drift
+ * onto its neighbour the next time the list is re-ordered.
+ */
+const REVEAL_MULTIPLE: Record<string, number> = {
+  Fotográfia: 2,
+  Grafika: 2,
+};
+
+/**
+ * How much scrolling each line of group `i` takes to uncover.
+ *
+ * This is the primitive the rest of a group's shape is derived from. One reveal
+ * by default; a multiple of it for the lines above; and the film's whole
+ * stretch for the word over the clip, so those two are one gesture — the word
+ * begins with the first frame and finishes on the last.
+ */
+const lineSpans = (i: number): number[] =>
+  captionGroups[i].map((line, j) =>
+    i === CLIP_SLOT && j === 0 ? VIDEO_RAW : REVEAL_RAW * (REVEAL_MULTIPLE[line] ?? 1),
+  );
 
 /**
  * Where each line of group `i` arrives, measured from the moment that image
  * reaches full size.
  *
- * Ordinarily a line lands as the one before it finishes, so a pair is one
- * reveal apart. The clip's group is the exception: its first caption runs with
- * the FILM rather than on its own clock — see below.
+ * A line lands as the one before it finishes, so this is just the running sum
+ * of the spans above. Derived rather than written down: the offsets used to be
+ * `j * REVEAL_RAW`, which quietly assumed every reveal was the same length, and
+ * a line given a longer one would have had its neighbour land on top of it
+ * halfway through.
  */
-const lineOffsets = (i: number) =>
-  i === CLIP_SLOT
-    ? [0, VIDEO_RAW]
-    : Array.from({ length: LINES[i] }, (_, j) => j * REVEAL_RAW);
+const lineOffsets = (i: number): number[] => {
+  const offsets: number[] = [];
+  let at = 0;
+  for (const span of lineSpans(i)) {
+    offsets.push(at);
+    at += span;
+  }
+  return offsets;
+};
 
 /**
- * …and how much scrolling each of them takes to uncover.
- *
- * One reveal, except for the word over the film. That one is drawn across the
- * film's whole stretch, so the two are one gesture: the word begins with the
- * first frame, finishes on the last, and takes exactly as long as the picture
- * does. Every other line keeps its own reveal, which is why this is a list and
- * not a constant — a single span cannot describe a caption that borrows its
- * length from something else.
+ * How long image `i` holds at full size before giving way: until its last line
+ * has finished being written, so nothing moves out from under a word still
+ * being drawn. Derived from the spans for the same reason the offsets are.
  */
-const lineSpans = (i: number) =>
-  i === CLIP_SLOT
-    ? [VIDEO_RAW, REVEAL_RAW]
-    : Array.from({ length: LINES[i] }, () => REVEAL_RAW);
+const holdRaw = (i: number): number => {
+  const spans = lineSpans(i);
+  return Math.max(...lineOffsets(i).map((o, j) => o + spans[j]));
+};
 
 // --- Laying the timeline out ------------------------------------------------
 // `bounds[i + 1]` is where image i reaches full size; `bounds[i + 2]` where it
@@ -129,28 +152,33 @@ export function clipWindow(i: number): [number, number] | null {
 export const DIM_SPAN = 0.1;
 
 /**
- * Where each line starts to fade back, and over how much scrolling.
+ * How much scrolling takes each line from full strength down to the stack.
  *
- * Ordinarily a line begins to give way the moment it arrives: the dim and the
- * reveal overlap, which is what makes a line feel like it is being written and
- * handed on in one gesture.
+ * Every line begins to give way the moment it arrives — the dim and the reveal
+ * overlap, which is what makes a line read as being written and handed on in
+ * one gesture — so where each starts is simply `captionArrivals`.
  *
- * The word over the film is the exception, and has to be. Its reveal borrows
- * the film's length — six ordinary reveals — so a dim starting with it was over
- * and done at a fifth of the way through the word being drawn: the back half of
- * VIDEOGRÁFIA arrived already parked, and the line was never once seen whole at
- * full strength. It now waits for its own reveal to finish, stands there at
- * full strength, and then takes twice as long as the others to fall away.
+ * One DIM_SPAN, except in two cases.
+ *
+ * A line given a longer reveal is given a fade to match, off the same multiple
+ * — so the two keep the relationship every other line has, where the fade
+ * outlasts the reveal by about four fifths and a word therefore stands at
+ * roughly half strength the moment it is finished. Left on the shared span, a
+ * doubled reveal simply outran it: FOTOGRÁFIA and GRAFIKA reached the stack's
+ * 10% while their last quarter was still being drawn. Reading it off
+ * REVEAL_MULTIPLE rather than writing it twice means the two cannot come apart
+ * later.
+ *
+ * And the word over the film fades across the FILM's window: full strength on
+ * the first frame, down to the stack exactly as the last one lands, so the word
+ * and the picture finish together. That one is deliberately the exception to the
+ * paragraph above — its fade and its reveal cover the same stretch, which is the
+ * whole point of it.
  */
-export const captionDimFrom: number[] = LINES.flatMap((_, i) =>
-  lineOffsets(i).map((o, j) => {
-    const arrival = (bounds[i + 1] + o) / TOTAL;
-    return i === CLIP_SLOT && j === 0 ? arrival + lineSpans(i)[j] / TOTAL : arrival;
-  }),
-);
-
-export const captionDimSpans: number[] = LINES.flatMap((_, i) =>
-  lineSpans(i).map((_span, j) => (i === CLIP_SLOT && j === 0 ? DIM_SPAN * 2 : DIM_SPAN)),
+export const captionDimSpans: number[] = captionGroups.flatMap((group, i) =>
+  group.map((line, j) =>
+    i === CLIP_SLOT && j === 0 ? VIDEO_RAW / TOTAL : DIM_SPAN * (REVEAL_MULTIPLE[line] ?? 1),
+  ),
 );
 
 /**
