@@ -11,7 +11,7 @@ import {
   captionLines,
   linesBefore,
 } from '@/content/sequenceCaptions';
-import { logoDockEnd, selectedTile } from '@/lib/heroSequenceState';
+import { logoDockEnd, selectedTile, sequenceFloor } from '@/lib/heroSequenceState';
 import { WORK_ANCHOR } from '@/lib/anchors';
 import { useHeldViewportHeight } from '@/lib/useHeldViewportHeight';
 import {
@@ -149,6 +149,11 @@ export const RUNWAY_VH = 4.38;
 /** Progress at which the first image takes over from the bouncing ball. */
 const BALL_HANDOFF = 0.005;
 
+/** Whether this is the first time the sequence has mounted in this document —
+ *  which is to say, whether the page was just loaded rather than navigated back
+ *  to. See the scroll-to-top effect below. */
+let firstMount = true;
+
 /**
  * How much of the scroll a phone's landing may fall short by and still count as
  * arrived.
@@ -162,20 +167,6 @@ const BALL_HANDOFF = 0.005;
  */
 const LANDING_SLACK = 8;
 
-/**
- * How long the page is held at the landing when it is reached from BELOW.
- *
- * Coming back up the page from the footer, the tile row arrives and is gone
- * again in the same flick — the sequence starts pulling itself apart before you
- * have registered that the tiles were ever there. So the scroll is caught on
- * that one frame, which kills a fling's momentum, and let go again a moment
- * later: keep pushing up and you carry straight on into the sequence.
- *
- * Long enough to read as a stop, short enough that a visitor who means to go
- * further never feels held. Only ever on the way UP — going down, the landing
- * is where you were heading anyway and stopping there would be in the way.
- */
-const LANDING_BRAKE_MS = 350;
 
 /** Once landed, each image settles from 100% to 95% of its tile. */
 const FINAL_SCALE = 0.95;
@@ -732,6 +723,42 @@ export function HeroImageSequence() {
     return selectedTile.on('change', (v) => setSelectedId(v as string | null));
   }, []);
 
+  /**
+   * A reload starts at the logo, with the sequence unplayed.
+   *
+   * It has to be made to. The sequence runs once and the landing is then a
+   * floor, so a browser restoring the scroll to where it left off would drop
+   * the visitor straight onto the tiles, latch the sequence on the first frame,
+   * and leave the hero on the far side of a floor they cannot cross — the
+   * sequence would never be seen again on that URL.
+   *
+   * Only on a fresh document. `firstMount` is module state, so a soft
+   * navigation back to the home page keeps whatever scroll Next restores and
+   * does not drag the visitor through the whole sequence a second time just to
+   * reach the tiles they came back to.
+   */
+  useEffect(() => {
+    // Manual for as long as this page is mounted, and handed back on the way
+    // out: it is a property of the session's history, not of this component,
+    // and leaving it switched off would quietly stop every OTHER page of the
+    // site restoring its scroll on reload too.
+    const had = 'scrollRestoration' in history ? history.scrollRestoration : null;
+    if (had !== null) history.scrollRestoration = 'manual';
+
+    // The jump to the top is only for a document that has just loaded. A soft
+    // navigation back to the home page keeps whatever scroll Next restores,
+    // rather than dragging the visitor through the whole sequence again to
+    // reach the tiles they came back to.
+    if (firstMount) {
+      firstMount = false;
+      window.scrollTo(0, 0);
+    }
+
+    return () => {
+      if (had !== null) history.scrollRestoration = had;
+    };
+  }, []);
+
   // Last frame's answers, kept only so React is told when one of them actually
   // changes — the scroll itself is read every frame and drives the motion
   // values directly, without a render.
@@ -741,11 +768,23 @@ export function HeroImageSequence() {
     piled: false,
     autoScroll: false,
     blur: 0,
-    /** Last frame's scroll position — what says which way the page is going. */
-    prevY: 0,
-    /** The landing brake: loaded by being past the landing, spent by firing. */
-    brakeArmed: false,
-    brakeUntil: 0,
+    /**
+     * The sequence runs once.
+     *
+     * Up to the landing the scroll drives it both ways, so a visitor can back
+     * up a little and watch a beat again. The moment the fifth picture is home
+     * and the five ARE the tiles, this is set and never cleared: progress
+     * stays at 1 for the life of the page, and scrolling back up past the tile
+     * row leaves the tiles standing instead of taking them apart again.
+     *
+     * It replaced a brake. The landing used to be held for a third of a second
+     * when it was reached from below, to stop a fling tearing back through the
+     * sequence before you had registered the tiles were there. With nothing
+     * left to run backwards into, a hold on the way up would only be a wall.
+     */
+    done: false,
+    /** The scroll the sequence ended on; 0 until it has. */
+    floor: 0,
     /** Last published caption type size, so a render is asked for only when it
      *  has actually moved. */
     cap: 0,
@@ -953,40 +992,30 @@ export function HeroImageSequence() {
       // down resumes from precisely the same frame — no accumulated error
       // either way, no state to get out of step, and no moment at which the
       // page is doing something the hand on the wheel did not ask for.
-      const rawY = window.scrollY;
-      let y = rawY;
+      const y = window.scrollY;
 
-      // --- A brake on the way back up --------------------------------------
-      // On the frame the images become tiles, and only when that frame is
-      // reached from BELOW — coming back up the page rather than arriving at
-      // the end of the sequence. The scroll is set down on the landing and held
-      // there for a moment, which is enough to stop a fling dead; push on and
-      // it lets go, and the sequence runs backwards from exactly where it
-      // stopped. See LANDING_BRAKE_MS.
-      //
-      // It arms by being past the landing and disarms by firing, so it happens
-      // once per journey up and cannot become a wall the visitor has to fight
-      // through twice.
-      const now = performance.now();
-      const holding = now < s.brakeUntil;
-      const crossing = s.brakeArmed && tiles.length > 0 && rawY < end && s.prevY >= end;
-      if (crossing) {
-        s.brakeArmed = false;
-        s.brakeUntil = now + LANDING_BRAKE_MS;
+      // --- Progress, latched at the landing --------------------------------
+      // Before the tiles are home the scroll drives this both ways, which is
+      // what lets a visitor back up a little and watch a beat again. After, it
+      // does not: `done` is set once and never cleared, so scrolling back up
+      // leaves the tiles standing instead of running the whole sequence in
+      // reverse. See `done` on the run ref.
+      if (!s.done) {
+        s.eff = Math.min(1, Math.max(0, y / end));
+        // …with the last few pixels of it called finished. See LANDING_SLACK: a
+        // smooth scroll stops where the browser leaves it, and a landing a
+        // fraction of a pixel short is a landing with nothing clickable on it.
+        if (end - y <= LANDING_SLACK) s.eff = 1;
+        if (s.eff >= 1) {
+          s.done = true;
+          // Everything above the landing is spent from here — a hero that
+          // cannot be re-entered and four screens of empty runway. The landing
+          // becomes the bottom of the page's travel; see the clamp in
+          // `onScroll`.
+          s.floor = end;
+          sequenceFloor.set(end);
+        }
       }
-      if ((crossing || holding) && rawY < end) {
-        window.scrollTo(0, end);
-        y = end;
-      } else if (!holding && rawY > end + LANDING_SLACK) {
-        s.brakeArmed = true;
-      }
-
-      s.eff = Math.min(1, Math.max(0, y / end));
-      // …with the last few pixels of it called finished. See LANDING_SLACK: a
-      // smooth scroll stops where the browser leaves it, and a landing a
-      // fraction of a pixel short is a landing with nothing clickable on it.
-      if (end - y <= LANDING_SLACK) s.eff = 1;
-      s.prevY = y;
 
       progress.set(s.eff);
       geoTick.set(geoTick.get() + 1);
@@ -1002,7 +1031,13 @@ export function HeroImageSequence() {
       // plays the last beat out exactly as a thumb would: the pictures fly, the
       // titles come up, and it stops on the frame the sequence ends on. A hand
       // on the screen interrupts it, as it interrupts any smooth scroll.
-      if (mobile) {
+      //
+      // `!s.done`, and not merely `mobile`: with progress latched at 1 the
+      // glide's own test — past the last swap, and short of the landing — is
+      // true at EVERY scroll position above the tiles. A visitor scrolling back
+      // up was pulled straight back down onto the landing by it. Once the
+      // sequence has played there is nothing left for it to finish.
+      if (mobile && !s.done) {
         if (s.eff < AUTOSCROLL_REARM) s.autoScroll = true;
         else if (s.autoScroll && s.eff >= FINAL_START && y < end - LANDING_SLACK) {
           s.autoScroll = false;
@@ -1012,13 +1047,12 @@ export function HeroImageSequence() {
         s.autoScroll = false;
       }
 
-      // The images only become tiles once the fifth is actually home — and stop
-      // being tiles again if the sequence is scrolled back off the end.
+      // The images become tiles once the fifth is actually home, and stay
+      // tiles: with progress latched there is no way back off the end.
       const home = s.eff >= 1;
       if (home !== s.landed) {
         s.landed = home;
         setLanded(home);
-        if (!home) selectedTile.set(null);
         // Nothing else happens here. A phone used to be scrolled to bring the
         // tile grid into view at this moment, from back when the tiles stacked
         // three rows deep and landed half off-screen. They fill the screen on
@@ -1030,6 +1064,16 @@ export function HeroImageSequence() {
     };
 
     const onScroll = () => {
+      // Held on the landing, in the scroll event itself rather than in the
+      // frame below it: correcting a frame later lets the void paint once
+      // before it is taken away, which reads as a flinch. Setting the scroll
+      // here fires another scroll event, which finds itself already at the
+      // floor and falls through — so there is no loop.
+      const s = run.current;
+      if (s.done && s.floor > 0 && window.scrollY < s.floor) {
+        window.scrollTo(0, s.floor);
+        return;
+      }
       if (!raf) raf = requestAnimationFrame(update);
     };
 

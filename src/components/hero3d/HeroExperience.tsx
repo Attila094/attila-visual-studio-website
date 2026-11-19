@@ -13,7 +13,7 @@ import {
   useTransform,
 } from 'framer-motion';
 import { LogoDraw } from './LogoDraw';
-import { logoDockEnd } from '@/lib/heroSequenceState';
+import { logoDockEnd, sequenceFloor } from '@/lib/heroSequenceState';
 import { useHeldViewportHeight } from '@/lib/useHeldViewportHeight';
 
 const bebas = Bebas_Neue({ subsets: ['latin', 'latin-ext'], weight: '400' });
@@ -192,11 +192,19 @@ export function HeroExperience({ onRevealed }: { onRevealed?: () => void } = {})
   }, []);
 
   // rAF smooth scroll back to the top when the docked logo (Home link) is used.
+  //
+  // "The top" is the sequence's floor once it has one. The sequence plays once,
+  // and from the landing on, the page will not go above it — so aiming at zero
+  // would be a link that scrolls to a place the page refuses to be, fighting
+  // the clamp the whole way and arriving nowhere. Nought until the sequence
+  // lands, which is the ordinary case and the ordinary behaviour.
   const toTop = (e: React.MouseEvent) => {
     if (window.scrollY <= LINK_AT) return; // not docked yet
+    const floor = sequenceFloor.get();
+    if (window.scrollY <= floor) return; // already as high as the page goes
     e.preventDefault();
     if (reduce) {
-      window.scrollTo(0, 0);
+      window.scrollTo(0, floor);
       return;
     }
     const start = window.scrollY;
@@ -205,7 +213,7 @@ export function HeroExperience({ onRevealed }: { onRevealed?: () => void } = {})
     const step = (now: number) => {
       const p = Math.min(1, (now - t0) / dur);
       const eased = 1 - Math.pow(1 - p, 3); // easeOutCubic
-      window.scrollTo(0, Math.round(start * (1 - eased)));
+      window.scrollTo(0, Math.round(floor + (start - floor) * (1 - eased)));
       if (p < 1) requestAnimationFrame(step);
     };
     requestAnimationFrame(step);

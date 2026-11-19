@@ -24,3 +24,19 @@ export const selectedTile = motionValue<string | null>(null);
  * without the hero simply has nothing to wait for.
  */
 export const logoDockEnd = motionValue(0);
+
+/**
+ * The scroll position the sequence ends on — and, once it has ended, the lowest
+ * the page may be scrolled to.
+ *
+ * The sequence plays once. Everything above the landing is therefore spent: a
+ * hero that cannot be re-entered and four screens of runway with nothing left
+ * in them, which is the black void you get if the page will still scroll up
+ * into it. So the landing becomes the floor, and the page simply stops there.
+ *
+ * Published here rather than kept inside <HeroImageSequence> because the hero's
+ * own docked logo is a "back to the top" link, and with a floor in force the
+ * top it should go to is this, not zero. Nought until the landing, which fails
+ * open: no floor, no clamping, and a page without the sequence is unaffected.
+ */
+export const sequenceFloor = motionValue(0);
