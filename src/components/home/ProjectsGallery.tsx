@@ -5,6 +5,11 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { AnimatePresence, motion } from 'framer-motion';
 import { galleryProjects, type Category, type GalleryItem } from '@/content/galleryProjects';
+import {
+  archProjectHref,
+  getArchProjectsBySection,
+  type ArchProject,
+} from '@/content/architectureProjects';
 import { allPhotos, allVideos } from '@/content/photoVideo';
 import { graphicAxonometries, graphicMotion, graphicPlans } from '@/content/graphics';
 import { morphSpring, projectLayoutId } from '@/lib/motion';
@@ -65,36 +70,29 @@ const pad = (n: number) => String(n).padStart(2, '0');
  * so the shared-element transition to the detail page is preserved.
  */
 /**
- * One project in an architect section. `item` is the backing gallery project —
- * when absent the tile renders as a named placeholder awaiting real imagery.
+ * One line of an architect section — and one tile, since the list and the row
+ * are built from the same array.
+ *
+ * Every project now has a page of its own, so `href` is always set; the only
+ * entry without a project behind it is the open slot at the end of Építészet,
+ * which points at the contact form instead.
  */
 type ArchitectEntry = {
   name: string;
+  /** Where this entry leads. Both the numbered line and the tile use it, so a
+   *  line and the tile beside it cannot send you to two different places. */
+  href: string;
   /** The project's own cover shot, out of `Építészet és belsőépítészet`. */
   cover?: string;
-  /** Somewhere other than a project page for the tile to lead — the tiles that
-   *  are an invitation rather than a finished job. */
-  href?: string;
-  item?: GalleryItem;
+  /** The shared-element key, where there is a cover to morph. */
+  slug?: string;
 };
-
-/**
- * Whether a project has photography behind it yet. The remaining `.svg` sources
- * are the scaffolding plates from before the real renders arrived — they read
- * as finished tiles, which is worse than an honest "hamarosan".
- */
-function hasArtwork(item?: GalleryItem): item is GalleryItem {
-  return !!item && !item.src.toLowerCase().endsWith('.svg');
-}
 
 const TILE_SIZES = '(min-width: 1024px) 15vw, (min-width: 768px) 30vw, 45vw';
 
 function ArchitectTile({ entry, index }: { entry: ArchitectEntry; index: number }) {
-  const { name, cover, href } = entry;
-  // Only a project whose own page has something to show is worth linking to.
-  const item = hasArtwork(entry.item) ? entry.item : undefined;
-  // The cover shot leads; failing that, the project's own artwork.
-  const src = cover ?? item?.src;
+  const { name, href, slug } = entry;
+  const src = entry.cover;
 
   // The tile carries the same number as its line in the list beside it: the two
   // are built from one array, so they cannot drift. Number left, name right.
@@ -116,19 +114,16 @@ function ArchitectTile({ entry, index }: { entry: ArchitectEntry; index: number 
     return (
       <figure className="flex w-40 shrink-0 flex-col sm:w-48 lg:w-56">
         {caption}
-        {href ? (
-          // The plate itself is the button: there is no work to show yet, so
-          // the tile's whole job is to lead to the enquiry form.
-          <Link
-            href={href}
-            draggable={false}
-            className="block w-full ring-inset transition-colors hover:[&>span]:bg-white/10 hover:[&>span>span]:text-white/60"
-          >
-            {plate}
-          </Link>
-        ) : (
-          plate
-        )}
+        {/* The plate itself is the button. There is no imagery yet, but the
+            project's page exists and says as much — which is a better answer
+            than a dead tile. */}
+        <Link
+          href={href}
+          draggable={false}
+          className="block w-full ring-inset transition-colors hover:[&>span]:bg-white/10 hover:[&>span>span]:text-white/60"
+        >
+          {plate}
+        </Link>
       </figure>
     );
   }
@@ -136,7 +131,7 @@ function ArchitectTile({ entry, index }: { entry: ArchitectEntry; index: number 
   const art = (
     <Image
       src={src}
-      alt={item?.alt ?? `${name} — építészeti projekt`}
+      alt={`${name} — építészeti projekt`}
       fill
       sizes={TILE_SIZES}
       unoptimized={shouldBypassOptimizer(src)}
@@ -145,30 +140,19 @@ function ArchitectTile({ entry, index }: { entry: ArchitectEntry; index: number 
     />
   );
 
-  // A cover with no project page behind it is just a picture — no link, and no
-  // morph handle either, since there is no hero on the other side to morph to.
-  if (!item) {
-    return (
-      <figure className="flex w-40 shrink-0 flex-col sm:w-48 lg:w-56">
-        {caption}
-        <div className="group relative block aspect-[3/5] w-full overflow-hidden bg-white/5">
-          {art}
-        </div>
-      </figure>
-    );
-  }
-
   return (
     <figure className="flex w-40 shrink-0 flex-col sm:w-48 lg:w-56">
       {caption}
       <Link
-        href={`/projects/${item.slug}`}
-        aria-label={item.title}
+        href={href}
+        aria-label={name}
         draggable={false}
         className="group relative block aspect-[3/5] w-full overflow-hidden rounded-none bg-white/5"
       >
+        {/* The morph handle: the project page's hero carries the same
+            `layoutId`, so the tile grows into it across the route change. */}
         <motion.div
-          layoutId={projectLayoutId(item.slug)}
+          layoutId={slug ? projectLayoutId(slug) : undefined}
           className="absolute inset-0"
           style={{ willChange: 'transform' }}
         >
@@ -242,7 +226,7 @@ function ArchitectTileRow({ entries }: { entries: ArchitectEntry[] }) {
       className="flex gap-3 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [@media(hover:hover)and(pointer:fine)]:cursor-grab [@media(hover:hover)and(pointer:fine)]:active:cursor-grabbing [&::-webkit-scrollbar]:hidden"
     >
       {entries.map((entry, i) => (
-        <ArchitectTile key={entry.item?.slug ?? entry.name} entry={entry} index={i} />
+        <ArchitectTile key={entry.href} entry={entry} index={i} />
       ))}
     </div>
   );
@@ -284,13 +268,21 @@ function ArchitectSection({
         <div className="relative lg:min-h-0">
           <ol className="min-h-0 space-y-1 overflow-y-auto pr-2 lg:absolute lg:inset-0 [scrollbar-color:rgba(255,255,255,0.25)_transparent] [scrollbar-width:thin] [&::-webkit-scrollbar-thumb]:rounded [&::-webkit-scrollbar-thumb]:bg-white/20 [&::-webkit-scrollbar]:w-1">
             {entries.map((entry, i) => (
-              <li key={`${entry.name}-${i}`} className="flex gap-3 text-sm">
-                <span className="tabular-nums text-white/40">{pad(i + 1)}</span>
-                <span
-                  className={`tracking-wide text-white/80 ${lowercase ? 'lowercase' : 'uppercase'}`}
+              <li key={`${entry.name}-${i}`}>
+                {/* The line is a link in its own right. It reads as the index
+                    of the row beside it, and an index whose entries cannot be
+                    clicked is a list of things you can see but not reach. */}
+                <Link
+                  href={entry.href}
+                  className="flex gap-3 text-sm transition-colors hover:text-white"
                 >
-                  {entry.name}
-                </span>
+                  <span className="tabular-nums text-white/40">{pad(i + 1)}</span>
+                  <span
+                    className={`tracking-wide text-white/80 ${lowercase ? 'lowercase' : 'uppercase'}`}
+                  >
+                    {entry.name}
+                  </span>
+                </Link>
               </li>
             ))}
           </ol>
@@ -310,60 +302,37 @@ function ArchitectSection({
  * two stacked editorial sections (Építészet ← exterior, Belsőépítészet ←
  * interior). Reuses the same dark panel shell as the default gallery.
  */
-/** Where the cover shots from `Építészet és belsőépítészet` are served from. */
-const ARCH = '/media/architecture';
-
-type ArchitectProject = { name: string; slug?: string; cover?: string; href?: string };
-
 /**
- * The Építészet projects, in order — the same shape as Belsőépítészet below.
- * One array drives both the numbered list and the tiles, so tile 01 is the
- * project on line 01. `cover` is that project's own cover shot; `slug` attaches
- * the tile to a project page. With neither — or with only a project still on a
- * placeholder plate — the tile reads "hamarosan".
+ * Both lists come from `architectureProjects` rather than being written out
+ * again here.
+ *
+ * They used to be two arrays in this file, which is how the menu ended up
+ * listing twelve projects while only two of them had anywhere to go. One list
+ * now feeds the lines, the tiles, the routes and `generateStaticParams`, so a
+ * project cannot appear in the menu without a page existing for it.
  */
-const EPITESZET_PROJECTS: ArchitectProject[] = [
-  { name: 'Rád', slug: 'rad-house', cover: `${ARCH}/epiteszet/rad.webp` },
-  { name: 'Szugló', cover: `${ARCH}/epiteszet/szuglo.webp` },
-  { name: 'Hertelend', cover: `${ARCH}/epiteszet/hertelend.webp` },
-  { name: 'Újpest' },
-  { name: 'Budapest - Hosszúrét', cover: `${ARCH}/epiteszet/budapest-hosszuret.webp` },
-  // Not a project: the open slot at the end of the row, on its blank plate,
-  // leading to the contact form.
-  { name: 'Projected', href: '/contact' },
-];
+const toEntries = (projects: ArchProject[]): ArchitectEntry[] =>
+  projects.map(({ name, slug, cover }) => ({
+    name,
+    slug: cover ? slug : undefined,
+    cover,
+    href: archProjectHref(slug),
+  }));
 
-/**
- * The Belsőépítészet projects, in order. The label column and the tiles are
- * driven by this one list, so the numbering and the tile captions always agree.
- * `slug` attaches a tile to a real project page; entries without one render as
- * named placeholders until their imagery exists.
- */
-const BELSOEPITESZET_PROJECTS: ArchitectProject[] = [
-  { name: 'Pécs - Rókus', cover: `${ARCH}/belsoepiteszet/pecs-rokus.webp` },
-  { name: 'Rád', slug: 'rad-kitchen', cover: `${ARCH}/belsoepiteszet/rad.webp` },
-  { name: 'Hévíz', cover: `${ARCH}/belsoepiteszet/heviz.webp` },
-  { name: 'Budapest - Pinty', cover: `${ARCH}/belsoepiteszet/budapest-pinty.webp` },
-  { name: 'Pécs - Petrus', cover: `${ARCH}/belsoepiteszet/pecs-petrus.webp` },
-  { name: 'Újpest' },
-  { name: 'Gödöllő', cover: `${ARCH}/belsoepiteszet/godollo.webp` },
-];
+/** The open slot at the end of Építészet: an invitation, not a building, so it
+ *  leads to the enquiry form and has no page of its own. */
+const PROJECTED: ArchitectEntry = { name: 'Projected', href: '/contact' };
 
 function ArchitectLayout() {
-  const toEntries = (projects: ArchitectProject[]): ArchitectEntry[] =>
-    projects.map(({ name, slug, cover, href }) => ({
-      name,
-      cover,
-      href,
-      item: slug ? galleryProjects.find((p) => p.slug === slug) : undefined,
-    }));
-
   return (
     <div className="space-y-10 rounded-3xl bg-[#111111] p-3 ring-1 ring-white/10 sm:p-5">
-      <ArchitectSection title="Építészet" entries={toEntries(EPITESZET_PROJECTS)} />
+      <ArchitectSection
+        title="Építészet"
+        entries={[...toEntries(getArchProjectsBySection('epiteszet')), PROJECTED]}
+      />
       <ArchitectSection
         title="Belsőépítészet"
-        entries={toEntries(BELSOEPITESZET_PROJECTS)}
+        entries={toEntries(getArchProjectsBySection('belsoepiteszet'))}
         lowercase
       />
     </div>

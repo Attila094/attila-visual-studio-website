@@ -1,5 +1,6 @@
 import type { MetadataRoute } from 'next';
 import { getAllGallerySlugs } from '@/content/galleryProjects';
+import { archProjectHref, getAllArchSlugs } from '@/content/architectureProjects';
 import { SITE_URL } from '@/lib/site';
 
 /**
@@ -29,5 +30,14 @@ export default function sitemap(): MetadataRoute.Sitemap {
     priority: 0.7,
   }));
 
-  return [...staticRoutes, ...projectRoutes];
+  // The Építészet & belsőépítészet pages, which have their own route under
+  // /projects/architecture/.
+  const architectureRoutes = getAllArchSlugs().map((slug) => ({
+    url: `${SITE_URL}${archProjectHref(slug)}`,
+    lastModified: now,
+    changeFrequency: 'yearly' as const,
+    priority: 0.7,
+  }));
+
+  return [...staticRoutes, ...projectRoutes, ...architectureRoutes];
 }

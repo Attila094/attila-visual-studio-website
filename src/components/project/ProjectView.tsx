@@ -8,6 +8,16 @@ import { getProjectGallery, type GalleryItem } from '@/content/galleryProjects';
 import { projectLayoutId } from '@/lib/motion';
 import { shouldBypassOptimizer } from '@/lib/image';
 import { ProjectGallery } from './ProjectGallery';
+import {
+  BODY_DELAY,
+  COL_BODY,
+  COL_PLATE,
+  COL_TITLE,
+  GRID,
+  Rise,
+  SectionTitle,
+} from './projectGrid';
+
 
 /**
  * Project detail page — the destination of the grid → hero shared-element morph.
@@ -68,7 +78,10 @@ export function ProjectView({ project }: { project: GalleryItem }) {
         </div>
       </motion.div>
 
-      {/* Everything below fades + slides up around the just-locked hero. */}
+      {/* 2–3 — The caption strip and the scrollable images keep the shell's
+          measure; the five-column grid starts below them. These two fade and
+          slide up around the just-locked hero, on arrival rather than on
+          scroll, because they are already on screen when the page lands. */}
       <motion.div
         initial={{ opacity: 0, y: 28 }}
         animate={{ opacity: 1, y: 0 }}
@@ -87,95 +100,107 @@ export function ProjectView({ project }: { project: GalleryItem }) {
         <div className="border-b border-line py-5">
           <ProjectGallery images={strip} alt={project.alt} tileClassName="aspect-[4/3] h-44 sm:h-56" />
         </div>
+      </motion.div>
 
-        {/* 4 — Label (left) · meta table + description (right). */}
-        <div className="grid grid-cols-1 gap-8 py-10 md:grid-cols-2">
-          <div>
-            <Caption />
-          </div>
-          <div>
-            <MetaTable project={project} />
-            <p className="mt-6 max-w-md leading-relaxed text-muted">{project.description}</p>
-          </div>
-        </div>
+      {/* 4 — Leírás: the title in the first column, the meta table and the
+          description across the fourth and fifth. Everything from here down is
+          on the grid and arrives as it is scrolled to. */}
+      <section className={`${GRID} py-12`}>
+        <Rise className={COL_TITLE}>
+          <SectionTitle n={1} tone="light" />
+        </Rise>
+        <Rise delay={BODY_DELAY} className={COL_BODY}>
+          <MetaTable project={project} />
+          <p className="mt-6 leading-relaxed text-muted">{project.description}</p>
+        </Rise>
+      </section>
 
-        {/* 5 — Feature block: big image w/ prev·next · two secondary images · meta. */}
-        <div className="grid grid-cols-1 gap-8 py-6 md:grid-cols-2">
-          <div>
-            <div className="relative aspect-square w-full overflow-hidden rounded-sm bg-line">
+      {/* 5 — Feature block. The title holds the first column as before; the big
+          image takes the two between it and the prose, so the plate is bounded
+          by the same lines everything else is. */}
+      <section className={`${GRID} py-12`}>
+        <Rise className={COL_TITLE}>
+          <SectionTitle n={2} tone="light" />
+        </Rise>
+
+        <Rise delay={BODY_DELAY} className={COL_PLATE}>
+          <div className="relative aspect-square w-full overflow-hidden rounded-sm bg-line">
+            <Image
+              key={featSrc}
+              src={featSrc}
+              alt={`${project.title} — kiemelt nézet`}
+              fill
+              sizes="(min-width: 768px) 40vw, 100vw"
+              unoptimized={shouldBypassOptimizer(featSrc)}
+              className="object-cover"
+            />
+          </div>
+          <div className="mt-4 flex items-center justify-center gap-10">
+            <button
+              type="button"
+              onClick={() => step(-1)}
+              aria-label="Előző kép"
+              className="text-2xl text-ink transition-transform hover:-translate-x-0.5"
+            >
+              ←
+            </button>
+            <button
+              type="button"
+              onClick={() => step(1)}
+              aria-label="Következő kép"
+              className="text-2xl text-ink transition-transform hover:translate-x-0.5"
+            >
+              →
+            </button>
+          </div>
+        </Rise>
+
+        <Rise delay={BODY_DELAY * 2} className={`${COL_BODY} flex flex-col justify-between gap-8`}>
+          <div className="grid grid-cols-2 gap-[5px]">
+            <div className="relative aspect-[3/4] overflow-hidden rounded-sm bg-line">
               <Image
-                key={featSrc}
-                src={featSrc}
-                alt={`${project.title} — kiemelt nézet`}
+                src={gallery[(feat + 1) % gallery.length]}
+                alt={`${project.title} — részlet 1`}
                 fill
-                sizes="(min-width: 768px) 46vw, 100vw"
-                unoptimized={shouldBypassOptimizer(featSrc)}
+                sizes="(min-width: 768px) 20vw, 50vw"
+                unoptimized={shouldBypassOptimizer(gallery[(feat + 1) % gallery.length])}
                 className="object-cover"
               />
             </div>
-            <div className="mt-4 flex items-center justify-center gap-10">
-              <button
-                type="button"
-                onClick={() => step(-1)}
-                aria-label="Előző kép"
-                className="text-2xl text-ink transition-transform hover:-translate-x-0.5"
-              >
-                ←
-              </button>
-              <button
-                type="button"
-                onClick={() => step(1)}
-                aria-label="Következő kép"
-                className="text-2xl text-ink transition-transform hover:translate-x-0.5"
-              >
-                →
-              </button>
+            <div className="relative aspect-[3/4] overflow-hidden rounded-sm bg-line">
+              <Image
+                src={gallery[(feat + 2) % gallery.length]}
+                alt={`${project.title} — részlet 2`}
+                fill
+                sizes="(min-width: 768px) 20vw, 50vw"
+                unoptimized={shouldBypassOptimizer(gallery[(feat + 2) % gallery.length])}
+                className="object-cover"
+              />
             </div>
           </div>
+          <MetaTable project={project} />
+        </Rise>
+      </section>
 
-          <div className="flex flex-col justify-between gap-8">
-            <div className="grid grid-cols-2 gap-3">
-              <div className="relative aspect-[3/4] overflow-hidden rounded-sm bg-line">
-                <Image
-                  src={gallery[(feat + 1) % gallery.length]}
-                  alt={`${project.title} — részlet 1`}
-                  fill
-                  sizes="23vw"
-                  unoptimized={shouldBypassOptimizer(gallery[(feat + 1) % gallery.length])}
-                  className="object-cover"
-                />
-              </div>
-              <div className="relative aspect-[3/4] overflow-hidden rounded-sm bg-line">
-                <Image
-                  src={gallery[(feat + 2) % gallery.length]}
-                  alt={`${project.title} — részlet 2`}
-                  fill
-                  sizes="23vw"
-                  unoptimized={shouldBypassOptimizer(gallery[(feat + 2) % gallery.length])}
-                  className="object-cover"
-                />
-              </div>
-            </div>
-            <div className="md:w-2/3 md:self-end">
-              <MetaTable project={project} />
-            </div>
-          </div>
-        </div>
-
-        {/* 6 — Closing paragraph. */}
-        <div className="border-t border-line py-10">
-          <p className="max-w-2xl leading-relaxed text-muted">{project.description}</p>
+      {/* 6 — Closing paragraph, on the same two columns the first one used. */}
+      <section className={`${GRID} border-t border-line py-12`}>
+        <Rise className={COL_TITLE}>
+          <SectionTitle n={3} tone="light" />
+        </Rise>
+        <Rise delay={BODY_DELAY} className={COL_BODY}>
+          <p className="leading-relaxed text-muted">{project.description}</p>
           <Link
             href="/contact"
             className="mt-8 inline-flex items-center gap-2 rounded-full bg-ink px-6 py-3 text-sm font-medium text-paper transition-transform duration-300 hover:-translate-y-0.5"
           >
             Hasonló projektet tervezel? Beszéljünk <span aria-hidden>↗</span>
           </Link>
-        </div>
-      </motion.div>
+        </Rise>
+      </section>
     </article>
   );
 }
+
 
 function Caption() {
   return (
