@@ -8,6 +8,7 @@ import { galleryProjects, type Category, type GalleryItem } from '@/content/gall
 import {
   archProjectHref,
   getArchProjectsBySection,
+  type ArchCover,
   type ArchProject,
 } from '@/content/architectureProjects';
 import { allPhotos, allVideos } from '@/content/photoVideo';
@@ -83,16 +84,33 @@ type ArchitectEntry = {
    *  line and the tile beside it cannot send you to two different places. */
   href: string;
   /** The project's own cover shot, out of `Építészet és belsőépítészet`. */
-  cover?: string;
+  cover?: ArchCover;
   /** The shared-element key, where there is a cover to morph. */
   slug?: string;
 };
 
-const TILE_SIZES = '(min-width: 1024px) 15vw, (min-width: 768px) 30vw, 45vw';
+/**
+ * How wide a file to ask for, for THIS cover.
+ *
+ * The tile is a 3:5 portrait filled by `object-cover`, so anything squarer
+ * than that is scaled until its HEIGHT fits and then cropped at the sides:
+ * what the browser actually paints is the tile's height times the cover's own
+ * ratio. For the Hertelend panorama that is three and a half times the tile's
+ * width.
+ *
+ * It used to say `15vw` — the tile's width — for all of them, so the browser
+ * dutifully fetched a 256px file for a job that needed 800 and blew it up,
+ * which is what made the row look soft. The tiles are w-40 / sm:w-48 / lg:w-56
+ * at 3:5, hence the three heights.
+ */
+const tileSizes = ({ width, height }: ArchCover) => {
+  const scale = Math.max(width / height, 3 / 5);
+  const need = (boxHeight: number) => Math.ceil(boxHeight * scale);
+  return `(min-width: 1024px) ${need(373)}px, (min-width: 640px) ${need(320)}px, ${need(267)}px`;
+};
 
 function ArchitectTile({ entry, index }: { entry: ArchitectEntry; index: number }) {
-  const { name, href, slug } = entry;
-  const src = entry.cover;
+  const { name, href, slug, cover } = entry;
 
   // The tile carries the same number as its line in the list beside it: the two
   // are built from one array, so they cannot drift. Number left, name right.
@@ -103,7 +121,7 @@ function ArchitectTile({ entry, index }: { entry: ArchitectEntry; index: number 
     </figcaption>
   );
 
-  if (!src) {
+  if (!cover) {
     const plate = (
       <span className="grid aspect-[3/5] w-full place-items-center bg-white/5 ring-1 ring-white/10">
         <span className="px-2 text-center text-[9px] uppercase tracking-[0.25em] text-white/30">
@@ -130,11 +148,11 @@ function ArchitectTile({ entry, index }: { entry: ArchitectEntry; index: number 
 
   const art = (
     <Image
-      src={src}
+      src={cover.src}
       alt={`${name} — építészeti projekt`}
       fill
-      sizes={TILE_SIZES}
-      unoptimized={shouldBypassOptimizer(src)}
+      sizes={tileSizes(cover)}
+      unoptimized={shouldBypassOptimizer(cover.src)}
       draggable={false}
       className="pointer-events-none object-cover transition-transform duration-500 ease-out group-hover:scale-[1.04]"
     />
@@ -223,7 +241,7 @@ function ArchitectTileRow({ entries }: { entries: ArchitectEntry[] }) {
       onPointerUp={endDrag}
       onPointerLeave={endDrag}
       onClickCapture={onClickCapture}
-      className="flex gap-3 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [@media(hover:hover)and(pointer:fine)]:cursor-grab [@media(hover:hover)and(pointer:fine)]:active:cursor-grabbing [&::-webkit-scrollbar]:hidden"
+      className="flex gap-3 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] cursor-grab active:cursor-grabbing [&::-webkit-scrollbar]:hidden"
     >
       {entries.map((entry, i) => (
         <ArchitectTile key={entry.href} entry={entry} index={i} />

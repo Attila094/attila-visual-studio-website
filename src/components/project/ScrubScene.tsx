@@ -125,19 +125,20 @@ export function Staged({
 }
 
 /**
- * The line animation itself: numbered frames drawn to a canvas, one per
- * position of the scroll.
+ * The animation itself: numbered frames drawn to a canvas, one per position of
+ * the scroll. The map that draws itself and the maquette that unrolls are the
+ * same machine with a different folder of frames.
  *
- * A canvas rather than ninety stacked `<img>`s, which would be ninety elements
- * for the compositor to keep in play, and rather than a video, which cannot be
- * scrubbed backwards without stalling. The canvas is sized in frame pixels and
- * scaled by CSS, so it is drawn at the source's own resolution however wide the
- * column happens to be.
+ * A canvas rather than a hundred stacked `<img>`s, which would be a hundred
+ * elements for the compositor to keep in play, and rather than a video, which
+ * cannot be scrubbed backwards without stalling. The canvas is sized in frame
+ * pixels and scaled by CSS, so it is drawn at the source's own resolution
+ * however wide the column happens to be.
  *
  * Frames are fetched only once the section is within a screen and a half, so a
  * visitor who never scrolls this far never pays for them.
  */
-export function LineSequence({
+export function FrameSequence({
   sequence,
   progress,
 }: {

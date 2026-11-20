@@ -72,6 +72,54 @@ export interface ArchSequence {
   alt: string;
 }
 
+/**
+ * One still, with the size it was rendered at.
+ *
+ * The dimensions are carried rather than looked up because the band sets each
+ * picture at its OWN proportions — an upright render of a room stays upright
+ * instead of being cropped square to match its neighbours — and because a box
+ * of the right shape can be reserved before the file has arrived, so the row
+ * does not shuffle as it loads.
+ */
+export interface ArchImage {
+  src: string;
+  width: number;
+  height: number;
+  alt: string;
+}
+
+/**
+ * A project's cover, with the size the file actually is.
+ *
+ * The menu crops it to a narrow 3:5 portrait tile and the project page runs it
+ * full width. In the tile the picture is scaled to the box's HEIGHT and then
+ * cropped at the sides, so the width the browser has to paint is the tile's
+ * height times the cover's own ratio — which for a panorama is several times
+ * the tile's width. A `sizes` attribute cannot say that without knowing the
+ * shape of the file, which is why the numbers travel with it.
+ *
+ * What it shows is the project's own `alt`: one picture, one description.
+ */
+export interface ArchCover {
+  src: string;
+  width: number;
+  height: number;
+}
+
+/**
+ * A film that stands in for the cover at the top of a project page.
+ *
+ * `poster` is its own first frame, not the cover shot: it is what the hero
+ * shows until the first bytes of video arrive, and a still from somewhere
+ * else would cut to something different the moment it started.
+ */
+export interface ArchVideo {
+  src: string;
+  poster: string;
+  width: number;
+  height: number;
+}
+
 export interface ArchProject {
   /** Unique route: /projects/architecture/<slug>. Carries the section, because
    *  Rád and Újpest each appear in BOTH lists and a bare name would collide. */
@@ -86,21 +134,57 @@ export interface ArchProject {
   designer?: string;
   year?: string;
   /** The cover shot the menu already uses. Doubles as the hero. */
-  cover?: string;
+  cover?: ArchCover;
+  /** A film for the hero, where there is one. The cover stays: it is still
+   *  what the menu tile shows, and still the poster's understudy. */
+  video?: ArchVideo;
   alt: string;
   /** 01 Leírás. Absent until somebody writes it. */
   description?: string;
   /** Prose inside a section, beyond the description. */
-  notes?: Partial<Record<ArchSectionId, ArchNote[]>>;
+  /**
+   * A section's note columns, in the order that section lays them out: 02 has
+   * just "Település" out in the fifth column, 04 has its two middle columns,
+   * and so on. A slot nobody has written yet is left `undefined` and the page
+   * prints the template's heading over a `hamarosan`, so a project can fill a
+   * later column without having to invent the ones before it.
+   */
+  notes?: Partial<Record<ArchSectionId, (ArchNote | undefined)[]>>;
   /** Stills for a section's plates, and for the strip under the hero. Where a
    *  section has none, the template draws the placeholder the design calls for. */
   media?: Partial<Record<ArchSectionId, string[]>>;
   /** A scrubbed line animation for a section, in place of its plate. */
   sequences?: Partial<Record<ArchSectionId, ArchSequence>>;
-  strip?: string[];
+  /** The band under the hero. Empty until a project's stills are in. */
+  strip?: ArchImage[];
 }
 
 const ARCH = '/media/architecture';
+
+/**
+ * A cover, at the resolution it is kept at: re-encoded from the project
+ * folder's own cover file, capped at 2400 on the long edge, and otherwise
+ * framed exactly as it was.
+ */
+const coverOf = (file: string, width: number, height: number): ArchCover => ({
+  src: `${ARCH}/${file}.webp`,
+  width,
+  height,
+});
+
+/**
+ * A still from the Rád house, named after the file it came from so that a
+ * picture on the page can always be traced back to the render it was made
+ * from. Every one of them is the original render's own resolution, re-encoded
+ * to WebP — what reaches a visitor is whatever size Next's optimiser decides
+ * the band needs, which is a fraction of it.
+ */
+const radStill = (file: string, width: number, height: number, alt: string): ArchImage => ({
+  src: `${ARCH}/epiteszet/rad/${file}.webp`,
+  width,
+  height,
+  alt,
+});
 
 /**
  * "Építészet", in the order the menu lists it.
@@ -116,14 +200,32 @@ const EPITESZET: ArchProject[] = [
     name: 'Rád',
     title: 'Rád — Családi ház',
     location: 'Rád',
-    designer: 'CSM Architect',
-    year: '2022',
-    cover: `${ARCH}/epiteszet/rad.webp`,
+    designer: 'The Line Studio',
+    year: '2026',
+    cover: coverOf('epiteszet/rad', 1600, 1600),
+    // "RAD - exterior.mov" from the project folder. The picture in it is a
+    // 1080 square padded out to 16:9 with black; the padding is cropped away
+    // here, so what the page holds is the picture and nothing else.
+    video: {
+      src: `${ARCH}/epiteszet/rad-exterior.mp4`,
+      poster: `${ARCH}/epiteszet/rad-exterior-poster.webp`,
+      width: 1080,
+      height: 1080,
+    },
     alt: 'Rád nyeregtetős modern családi ház látványterv zöld környezetben',
     description:
       'Nyeregtetős, kortárs családi ház a zöld környezetbe simulva. A terv a hagyományos tömeg és a modern nyílászárók visszafogott, arányos találkozására épít.',
     // "Rad - line.mov" from the project folder: Hungary drawn in outline, with
     // the pin dropping on Rád. 90 frames, keyed white-on-nothing.
+    notes: {
+      // 02's one note column: "Település", out in the fifth beside the map.
+      helyszin: [
+        {
+          body:
+            'Rád egy nyugodt, közel kétezer fős község Pest vármegyében, a Váci járásban, a Cserhát és a Gödöllői-dombság találkozásánál, Váctól alig néhány kilométerre. Az Árpád-kor óta lakott település legismertebb látnivalói közé tartozik a 18. századi barokk római katolikus templom és a késő barokk-copf stílusú Muslay-kúria, amelyeket lankás, erdős és kirándulásra is alkalmas dombvidéki környezet vesz körül. Falusias hangulata és a fővároshoz való közelsége miatt ma is kedvelt, csendes lakó- és pihenőhely.',
+        },
+      ],
+    },
     sequences: {
       helyszin: {
         dir: `${ARCH}/epiteszet/rad-line`,
@@ -132,7 +234,34 @@ const EPITESZET: ArchProject[] = [
         height: 1036,
         alt: 'Magyarország körvonala, rajta Rád elhelyezkedése',
       },
+      beepites: {
+        dir: `${ARCH}/epiteszet/rad-site`,
+        frames: 121,
+        width: 1504,
+        height: 1504,
+        alt: 'A telepítési terv kigurul, és a makett házai, fái és a tereplépcső kiemelkednek belőle',
+      },
     },
+    // The project folder's own renders, outside first and then through the
+    // house, which is the order anybody walks it in.
+    strip: [
+      radStill('exterior-000', 3000, 2250, 'A kivilágított üvegezett oromfal alkonyatkor, lombtalan fák mögött'),
+      radStill('exterior-001-1', 3000, 3000, 'A sötét faburkolatú ház a kert felől, a szomszédos házak előtt'),
+      radStill('exterior-001-2', 3000, 3000, 'A ház oldalnézete a magas fűvel benőtt kert felől'),
+      radStill('shot-03', 2250, 3000, 'Az üvegezett oromfal alulról, a kerti kerítés mögül'),
+      radStill('exterior-006', 2000, 2000, 'A faburkolatos homlokzat és a bejáratig vezető lépcsős járda'),
+      radStill('exterior-013', 2000, 2000, 'A ház hosszanti homlokzata a lejtős rét felől'),
+      radStill('exterior-007', 2000, 2000, 'A ház borús téli alkonyatban, csupasz fák között'),
+      radStill('interior-01', 2560, 1920, 'Étkező a konyha felé nézve, lineáris függesztett lámpatesttel'),
+      radStill('interior-00', 1920, 2560, 'Az étkező a sötét burkolatú átjáróból nézve'),
+      radStill('interior-03', 2560, 1920, 'Konyhasziget bárszékekkel és kör alakú páraelszívóval'),
+      radStill('interior-02', 1920, 2560, 'A konyhapult és a bárszékek a nappali felől'),
+      radStill('interior-04', 1500, 1500, 'Nappali a függesztett kandallóval és a terasz üvegfalával'),
+      radStill('interior-07', 2000, 2000, 'A nappali égő kandallóval, fa mennyezet alatt'),
+      radStill('interior-08', 2000, 2000, 'A nappali ülőgarnitúrája a kandalló körül'),
+      radStill('interior-06', 1000, 1000, 'Pihenősarok a függönyös ablaknál, pihenőfotellel'),
+      radStill('interior-05', 2250, 3000, 'Esti fény a nappali olvasósarkában'),
+    ],
   },
   {
     slug: 'epiteszet-szuglo',
@@ -140,7 +269,7 @@ const EPITESZET: ArchProject[] = [
     name: 'Szugló',
     title: 'Szugló',
     location: 'Budapest',
-    cover: `${ARCH}/epiteszet/szuglo.webp`,
+    cover: coverOf('epiteszet/szuglo', 2400, 2400),
     alt: 'Szugló építészeti látványterv',
   },
   {
@@ -149,7 +278,7 @@ const EPITESZET: ArchProject[] = [
     name: 'Hertelend',
     title: 'Hertelend',
     location: 'Hertelend',
-    cover: `${ARCH}/epiteszet/hertelend.webp`,
+    cover: coverOf('epiteszet/hertelend', 2400, 1099),
     alt: 'Hertelend építészeti látványterv',
   },
   {
@@ -166,7 +295,7 @@ const EPITESZET: ArchProject[] = [
     name: 'Budapest - Hosszúrét',
     title: 'Budapest — Hosszúrét',
     location: 'Budapest — Hosszúrét',
-    cover: `${ARCH}/epiteszet/budapest-hosszuret.webp`,
+    cover: coverOf('epiteszet/budapest-hosszuret', 2400, 1484),
     alt: 'Budapest, hosszúréti építészeti látványterv',
   },
 ];
@@ -179,7 +308,7 @@ const BELSOEPITESZET: ArchProject[] = [
     name: 'Pécs - Rókus',
     title: 'Pécs — Rókus',
     location: 'Pécs',
-    cover: `${ARCH}/belsoepiteszet/pecs-rokus.webp`,
+    cover: coverOf('belsoepiteszet/pecs-rokus', 1600, 2400),
     alt: 'Pécs, Rókus belsőépítészeti látványterv',
   },
   {
@@ -188,9 +317,9 @@ const BELSOEPITESZET: ArchProject[] = [
     name: 'Rád',
     title: 'Rád — Konyha',
     location: 'Rád',
-    designer: 'CSM Architect',
-    year: '2022',
-    cover: `${ARCH}/belsoepiteszet/rad.webp`,
+    designer: 'The Line Studio',
+    year: '2026',
+    cover: coverOf('belsoepiteszet/rad', 1200, 1600),
     alt: 'Rád belsőépítészeti látványterv: fa burkolatú konyha bárszékekkel',
     description:
       'Meleg tónusú faburkolat és visszafogott kőfelületek: a konyha a ház közös terének folytatása, nem külön helyiség. A bárszékes pult a napi használat és a vendéglátás közötti átmenetet oldja fel.',
@@ -201,7 +330,7 @@ const BELSOEPITESZET: ArchProject[] = [
     name: 'Hévíz',
     title: 'Hévíz',
     location: 'Hévíz',
-    cover: `${ARCH}/belsoepiteszet/heviz.webp`,
+    cover: coverOf('belsoepiteszet/heviz', 1600, 1600),
     alt: 'Hévízi belsőépítészeti látványterv',
   },
   {
@@ -210,7 +339,7 @@ const BELSOEPITESZET: ArchProject[] = [
     name: 'Budapest - Pinty',
     title: 'Budapest — Pinty',
     location: 'Budapest',
-    cover: `${ARCH}/belsoepiteszet/budapest-pinty.webp`,
+    cover: coverOf('belsoepiteszet/budapest-pinty', 2400, 2400),
     alt: 'Budapest, Pinty utcai belsőépítészeti látványterv',
   },
   {
@@ -219,7 +348,7 @@ const BELSOEPITESZET: ArchProject[] = [
     name: 'Pécs - Petrus',
     title: 'Pécs — Petrus',
     location: 'Pécs',
-    cover: `${ARCH}/belsoepiteszet/pecs-petrus.webp`,
+    cover: coverOf('belsoepiteszet/pecs-petrus', 640, 915),
     alt: 'Pécs, Petrus belsőépítészeti látványterv',
   },
   {
@@ -236,7 +365,7 @@ const BELSOEPITESZET: ArchProject[] = [
     name: 'Gödöllő',
     title: 'Gödöllő',
     location: 'Gödöllő',
-    cover: `${ARCH}/belsoepiteszet/godollo.webp`,
+    cover: coverOf('belsoepiteszet/godollo', 2000, 2000),
     alt: 'Gödöllői belsőépítészeti látványterv',
   },
 ];

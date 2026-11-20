@@ -1,17 +1,18 @@
 'use client';
 
-import { useRef, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
-import { motion, type MotionValue } from 'framer-motion';
+import { motion, useReducedMotion, type MotionValue } from 'framer-motion';
 import {
   ARCH_SECTIONS,
   ARCH_SECTION_LABELS,
   type ArchNote,
   type ArchProject,
   type ArchSectionId,
+  type ArchVideo,
 } from '@/content/architectureProjects';
-import { LineSequence, ScrubScene, Staged } from './ScrubScene';
+import { FrameSequence, ScrubScene, Staged } from './ScrubScene';
 import { shouldBypassOptimizer } from '@/lib/image';
 import { projectLayoutId } from '@/lib/motion';
 import { WORK_HREF } from '@/lib/anchors';
@@ -63,6 +64,9 @@ export function ArchProjectView({ project }: { project: ArchProject }) {
 const STACK_TOP = 64;
 /** A bar is its title and nothing else: one 20px line with 10px either side. */
 const BAR_H = 40;
+/** Under every bar, over everything else: where the cap above the stack sits.
+ *  See <StackCap>. */
+const CAP_Z = 34;
 /** The beat between one text element and the next within a section, in seconds
  *  where the section arrives on its own, and in scene progress where it is
  *  scrubbed by the scroll. */
@@ -193,15 +197,26 @@ function StackSection({
     // 01–06 strip lands the section with its bar already in its place in the
     // stack rather than underneath it.
     <section id={id} className="relative" style={{ scrollMarginTop: top }}>
+      {index === 0 && <StackCap />}
+
       <div
         className="sticky bg-ink shadow-[inset_0_-1px_0_rgba(255,255,255,0.08)]"
         style={{ top, height: BAR_H, zIndex: 40 - index }}
       >
-        <div className={`${GRID} h-full items-center`}>
+        {/* The whole bar is the link, not just the words in it: once six of
+            them are stacked they are the page's table of contents, and a
+            target one line tall and one column wide is a target nobody hits.
+            The tint goes on the link rather than on the bar, so what stays
+            opaque stays opaque — a translucent background here would let the
+            page show through the one thing that has to hide it. */}
+        <a
+          href={`#${id}`}
+          className={`${GRID} group h-full items-center transition-colors hover:bg-white/[0.05]`}
+        >
           <RiseLine className={COL_TITLE}>
             <SectionTitle n={n} label={ARCH_SECTION_LABELS[id]} />
           </RiseLine>
-        </div>
+        </a>
       </div>
 
       {bare ? children : <div className={`${GRID} pb-16 pt-6`}>{children}</div>}
@@ -213,6 +228,30 @@ function StackSection({
 
 /** Where a section's body parks: the foot of its own bar in the stack. */
 const stickUnder = (index: number) => STACK_TOP + (index + 1) * BAR_H;
+
+/**
+ * The strip above the stack.
+ *
+ * The bars park clear of the site's own fixed chrome, which leaves the top 64
+ * pixels of the window belonging to nobody: a paragraph on its way out of the
+ * page would duck behind the first bar and then come back into view above it,
+ * which reads as the stack leaking. This covers that strip in the page's own
+ * black for as long as the stack is up.
+ *
+ * It is nothing in the layout — a zero-height box with its sheet hanging out
+ * below it — and sticky at the very top of the FIRST section, which runs to
+ * the foot of the document, so once it is up it stays up. Until then it sits
+ * exactly over that section's own bar row, which is page-coloured and empty,
+ * and is therefore invisible: it is under every bar, so the title it passes
+ * over is drawn straight back on top of it.
+ */
+function StackCap() {
+  return (
+    <div aria-hidden className="sticky top-0 h-0" style={{ zIndex: CAP_Z }}>
+      <div className="bg-ink" style={{ height: STACK_TOP }} />
+    </div>
+  );
+}
 
 /* ── 0 — Hero ──────────────────────────────────────────────────────────────
    Full width inside the grid's own 5px margin, the title ranged left along
@@ -229,14 +268,16 @@ function Hero({ project }: { project: ArchProject }) {
         className="relative h-[72vh] w-full overflow-hidden bg-white/[0.06]"
         style={{ willChange: 'transform' }}
       >
-        {project.cover ? (
+        {project.video ? (
+          <HeroFilm video={project.video} alt={project.alt} />
+        ) : project.cover ? (
           <Image
-            src={project.cover}
+            src={project.cover.src}
             alt={project.alt}
             fill
             sizes="100vw"
             priority
-            unoptimized={shouldBypassOptimizer(project.cover)}
+            unoptimized={shouldBypassOptimizer(project.cover.src)}
             className="object-cover"
           />
         ) : (
@@ -245,7 +286,7 @@ function Hero({ project }: { project: ArchProject }) {
 
         {/* Only where there is a picture to darken — over a bare plate the
             scrim would just be a second grey. */}
-        {project.cover && (
+        {(project.cover || project.video) && (
           <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-black/20" />
         )}
 
@@ -265,6 +306,53 @@ function Hero({ project }: { project: ArchProject }) {
         </div>
       </motion.div>
     </div>
+  );
+}
+
+/**
+ * The hero's film.
+ *
+ * It plays by itself, so it is muted — which is not a style choice: a browser
+ * will not start a film with sound on its own, and asking it to only gets the
+ * poster left up. Muted, looping and inline, which is the whole of what makes
+ * an autoplaying background film work on a phone as well as a desktop.
+ *
+ * `autoPlay` is not in the markup. It is started from an effect instead, so
+ * the server and the first client render agree on the attributes and nothing
+ * has to be reconciled on hydration — and so that a reader who has asked for
+ * less motion is not overruled. For them it does not start: the poster stays
+ * up and the film gets its own controls, which is a film offered rather than
+ * a film imposed.
+ */
+function HeroFilm({ video, alt }: { video: ArchVideo; alt: string }) {
+  const ref = useRef<HTMLVideoElement>(null);
+  const reduce = useReducedMotion();
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || reduce) return;
+    // A browser that refuses anyway leaves the poster up, which is a perfectly
+    // good hero — so there is nothing to handle but the unhandled rejection.
+    void el.play().catch(() => {});
+  }, [reduce]);
+
+  return (
+    <video
+      ref={ref}
+      src={video.src}
+      poster={video.poster}
+      width={video.width}
+      height={video.height}
+      muted
+      loop
+      playsInline
+      controls={reduce === true}
+      // Enough to size and show the poster; the bytes follow when it plays,
+      // so a reader who never sets it going never pays for the film.
+      preload="metadata"
+      aria-label={alt}
+      className="absolute inset-0 h-full w-full object-cover"
+    />
   );
 }
 
@@ -292,40 +380,70 @@ function SectionNav() {
   );
 }
 
-/* ── The images band ───────────────────────────────────────────────────────
-   "IMAGES — horizontally scrollable and dragable". Until a project has a set
-   of stills, this is the band itself labelled, rather than a row of empty
-   frames pretending to be one. */
+/* ── The images band ───────────────────────────────────────────────────────────
+   "IMAGES — horizontally scrollable and dragable": a row you throw sideways
+   with the wheel or drag with the pointer, running off the right-hand edge of
+   the page, so that it is plain there is more of it than the window holds.
+
+   Until a project has its stills the row holds plates at the two shapes the
+   finished band will — upright and across — rather than one long empty bar.
+   A band of the right height, with the right number of things in it and the
+   right amount of it hanging off the edge, is the only kind of placeholder
+   that says anything about what it is standing in for. */
+
+/**
+ * The shapes the placeholder row runs through, in order.
+ *
+ * Deliberately not a repeating pair: upright, across, upright reads as a
+ * pattern, and a set of photographs never is one.
+ */
+const BAND_SHAPES = ['4 / 3', '3 / 4', '4 / 3', '4 / 3', '3 / 4', '4 / 3', '3 / 4', '3 / 4'];
+
+/** One height for the band at any width, whatever is in it: the plates and the
+ *  real stills are the same row, and only their widths differ. */
+const BAND_H = 'h-44 sm:h-56 lg:h-64';
+
 function ImagesBand({ project }: { project: ArchProject }) {
   const images = project.strip ?? [];
   return (
     <div className="px-[5px] py-[5px]">
-      {images.length > 0 ? (
-        <DragRow>
-          {images.map((src) => (
-            <div key={src} className="relative h-56 w-80 shrink-0 overflow-hidden bg-white/[0.06]">
-              <Image
-                src={src}
-                alt={project.alt}
-                fill
-                sizes="320px"
-                unoptimized={shouldBypassOptimizer(src)}
-                draggable={false}
-                className="pointer-events-none object-cover"
+      <DragRow>
+        {images.length > 0
+          ? images.map((img) => (
+              // The box takes the render's own proportions, so an upright shot
+              // of a room stands upright in the row and nothing is cropped to
+              // make the band tidy. It is also the shape the row holds open
+              // while the file is still coming, which is why the dimensions
+              // travel with the picture.
+              <div
+                key={img.src}
+                className={`relative ${BAND_H} shrink-0 overflow-hidden bg-white/[0.06]`}
+                style={{ aspectRatio: `${img.width} / ${img.height}` }}
+              >
+                <Image
+                  src={img.src}
+                  alt={img.alt}
+                  fill
+                  // The band is 256px tall at its tallest, so the widest of
+                  // these sets about 345 — a long way under the render it is
+                  // cut from, which is the whole point of going through the
+                  // optimiser rather than shipping the source.
+                  sizes="(min-width: 1024px) 345px, (min-width: 640px) 300px, 240px"
+                  unoptimized={shouldBypassOptimizer(img.src)}
+                  draggable={false}
+                  className="pointer-events-none object-cover"
+                />
+              </div>
+            ))
+          : BAND_SHAPES.map((shape, i) => (
+              <div
+                key={i}
+                aria-hidden
+                className={`${BAND_H} shrink-0 bg-white/[0.06]`}
+                style={{ aspectRatio: shape }}
               />
-            </div>
-          ))}
-        </DragRow>
-      ) : (
-        <div className="grid h-40 w-full place-items-center bg-white/[0.06] text-center">
-          <div>
-            <p className="text-xl font-semibold uppercase tracking-[0.2em] text-white/70">Images</p>
-            <p className="mt-1 text-[10px] uppercase tracking-[0.2em] text-white/40">
-              horizontally scrollable and dragable
-            </p>
-          </div>
-        </div>
-      )}
+            ))}
+      </DragRow>
     </div>
   );
 }
@@ -350,11 +468,15 @@ function Leiras({ project, index, children }: SectionProps) {
    The map holds the left three columns; "Település" sits out in the fifth and
    the concept note in the fourth.
 
+   The fourth column is left empty on purpose: the row is the map and the town
+   beside it, and a second heading in between was only ever a placeholder with
+   nothing behind it.
+
    Where the project has a line animation for this section, the whole row parks
    under the stack and the scroll draws it: the country comes out in outline,
-   the two notes arrive one after the other as it does, and the pin drops on
-   the town last. Where it has not, the row is the plate the design calls for
-   and the notes arrive as they are scrolled to, as everywhere else. */
+   the note arrives beside it as it does, and the pin drops on the town last.
+   Where it has not, the row is the plate the design calls for and the note
+   arrives as it is scrolled to, as everywhere else. */
 function Helyszin({ project, index, children }: SectionProps) {
   const sequence = project.sequences?.helyszin;
   const notes = project.notes?.helyszin;
@@ -365,11 +487,8 @@ function Helyszin({ project, index, children }: SectionProps) {
         <Rise delay={BODY_DELAY} className={COL_1_3}>
           <Plate ratio="aspect-[16/10]">Placeholder for scrollable animation</Plate>
         </Rise>
-        <div className={COL_4}>
-          <Notes notes={notes} fallbackHeading="Beépítési koncepció" cue={nth(1)} />
-        </div>
         <div className={COL_5}>
-          <Notes notes={undefined} fallbackHeading="Település" cue={nth(3)} />
+          <Notes note={notes?.[0]} fallbackHeading="Település" cue={nth(1)} />
         </div>
       </StackSection>
     );
@@ -381,20 +500,13 @@ function Helyszin({ project, index, children }: SectionProps) {
         {(progress) => (
           <div className={`${GRID} pb-16 pt-6`}>
             <div className={COL_1_3}>
-              <LineSequence sequence={sequence} progress={progress} />
-            </div>
-            <div className={COL_4}>
-              <Notes
-                notes={notes}
-                fallbackHeading="Beépítési koncepció"
-                cue={sceneCue(progress, 0.32)}
-              />
+              <FrameSequence sequence={sequence} progress={progress} />
             </div>
             <div className={COL_5}>
               <Notes
-                notes={undefined}
+                note={notes?.[0]}
                 fallbackHeading="Település"
-                cue={sceneCue(progress, 0.56)}
+                cue={sceneCue(progress, 0.32)}
               />
             </div>
           </div>
@@ -404,19 +516,51 @@ function Helyszin({ project, index, children }: SectionProps) {
   );
 }
 
-/* ── 03 Beépítés ───────────────────────────────────────────────────────────
+/* ── 03 Beépítés Beépítés ───────────────────────────────────────────────────────────
    The plate steps right into columns two to four; the fifth carries the note
-   and, beneath it, the meta table again. */
+   and, beneath it, the meta table again.
+
+   Where the project has an animation for this section the row parks under the
+   stack and the scroll plays it — the site plan unrolls and the maquette comes
+   up off it — with the note and the table arriving beside it as it builds.
+   Where it has not, the row is the plate the design calls for. */
 function Beepites({ project, index, children }: SectionProps) {
+  const sequence = project.sequences?.beepites;
+  const note = project.notes?.beepites?.[0];
+
+  if (!sequence) {
+    return (
+      <StackSection id="beepites" n={3} index={index} rest={children}>
+        <Rise delay={BODY_DELAY} className={COL_2_4}>
+          <Plate ratio="aspect-[16/10]">Placeholder for scrollable animation</Plate>
+        </Rise>
+        <div className={`${COL_5} space-y-8`}>
+          <Notes note={note} fallbackHeading="Beépítési koncepció" cue={nth(1)} />
+          <MetaTable project={project} cue={nth(3)} />
+        </div>
+      </StackSection>
+    );
+  }
+
   return (
-    <StackSection id="beepites" n={3} index={index} rest={children}>
-      <Rise delay={BODY_DELAY} className={COL_2_4}>
-        <Plate ratio="aspect-[16/10]">Placeholder for scrollable animation</Plate>
-      </Rise>
-      <div className={`${COL_5} space-y-8`}>
-        <Notes notes={project.notes?.beepites} fallbackHeading="Beépítési koncepció" cue={nth(1)} />
-        <MetaTable project={project} cue={nth(3)} />
-      </div>
+    <StackSection id="beepites" n={3} index={index} rest={children} bare>
+      <ScrubScene stick={stickUnder(index)}>
+        {(progress) => (
+          <div className={`${GRID} pb-16 pt-6`}>
+            <div className={COL_2_4}>
+              <FrameSequence sequence={sequence} progress={progress} />
+            </div>
+            <div className={`${COL_5} space-y-8`}>
+              <Notes
+                note={note}
+                fallbackHeading="Beépítési koncepció"
+                cue={sceneCue(progress, 0.18)}
+              />
+              <MetaTable project={project} cue={sceneCue(progress, 0.5)} />
+            </div>
+          </div>
+        )}
+      </ScrubScene>
     </StackSection>
   );
 }
@@ -437,13 +581,13 @@ function Tomegformalas({ project, index, children }: SectionProps) {
       </div>
       <div className={COL_3}>
         <Notes
-          notes={project.notes?.tomegformalas}
+          note={project.notes?.tomegformalas?.[0]}
           fallbackHeading="Beépítési koncepció"
           cue={nth(2)}
         />
       </div>
       <div className={COL_4}>
-        <Notes notes={undefined} fallbackHeading="Beépítési koncepció" cue={nth(4)} />
+        <Notes note={project.notes?.tomegformalas?.[1]} fallbackHeading="Beépítési koncepció" cue={nth(4)} />
       </div>
     </StackSection>
   );
@@ -456,13 +600,13 @@ function Rajzok({ project, index, children }: SectionProps) {
   return (
     <StackSection id="rajzok" n={5} index={index} rest={children}>
       <div className={COL_1}>
-        <Notes notes={project.notes?.rajzok} fallbackHeading="Beépítési koncepció" cue={nth(1)} />
+        <Notes note={project.notes?.rajzok?.[0]} fallbackHeading="Beépítési koncepció" cue={nth(1)} />
       </div>
       <Rise delay={BODY_DELAY} className={COL_2_4}>
         <Carousel images={project.media?.rajzok} alt={project.alt} ratio="aspect-[16/9]" />
       </Rise>
       <div className={COL_5}>
-        <Notes notes={undefined} fallbackHeading="Beépítési koncepció" cue={nth(3)} />
+        <Notes note={project.notes?.rajzok?.[1]} fallbackHeading="Beépítési koncepció" cue={nth(3)} />
       </div>
     </StackSection>
   );
@@ -588,37 +732,35 @@ function Carousel({
 }
 
 /**
- * A titled paragraph, or the plain admission that it is not written yet.
+ * One of a section's note columns: a heading and the paragraph under it — or
+ * the plain admission that the paragraph is not written yet.
+ *
+ * The heading is the template's, because the slot is the template's: "Település"
+ * is the fifth column of 02 wherever you are on the site. A project may still
+ * override it where its own note is about something else.
  *
  * Heading and body are separate lines in the queue — the heading arrives, then
  * what it introduces, which is the order they are read in.
  */
 function Notes({
-  notes,
+  note,
   fallbackHeading,
   cue,
 }: {
-  notes?: ArchNote[];
+  note?: ArchNote;
   fallbackHeading: string;
   cue: Cue;
 }) {
-  const list = notes?.length ? notes : [{ heading: fallbackHeading, body: '' }];
   return (
-    <div className="space-y-6">
-      {list.map((note, i) => (
-        <div key={`${note.heading ?? ''}-${i}`}>
-          {note.heading && (
-            <Cued cue={after(cue, i * 2)}>
-              <h3 className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white">
-                {note.heading}
-              </h3>
-            </Cued>
-          )}
-          <div className="mt-2">
-            <Body text={note.body} cue={after(cue, i * 2 + 1)} />
-          </div>
-        </div>
-      ))}
+    <div>
+      <Cued cue={cue}>
+        <h3 className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white">
+          {note?.heading ?? fallbackHeading}
+        </h3>
+      </Cued>
+      <div className="mt-2">
+        <Body text={note?.body} cue={after(cue, 1)} />
+      </div>
     </div>
   );
 }
@@ -671,6 +813,11 @@ function MetaTable({ project, cue }: { project: ArchProject; cue: Cue }) {
  * The images band's scroller: vertical wheel becomes horizontal scroll, and a
  * pointer drag scrolls too. Lifted from the menu's own tile row so the two
  * behave identically — a visitor who has dragged one has learned both.
+ *
+ * The grab cursor used to be behind an `(hover:hover) and (pointer:fine)`
+ * query written without the spaces CSS needs, so the rule was thrown away and
+ * no scroller on the site has shown a grab cursor. It is unguarded now: a
+ * `cursor` declaration is inert on a device with no pointer to draw.
  */
 function DragRow({ children }: { children: ReactNode }) {
   const ref = useRef<HTMLDivElement>(null);
@@ -695,7 +842,7 @@ function DragRow({ children }: { children: ReactNode }) {
       onPointerLeave={() => {
         drag.current.active = false;
       }}
-      className="flex gap-[5px] overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [@media(hover:hover)and(pointer:fine)]:cursor-grab [@media(hover:hover)and(pointer:fine)]:active:cursor-grabbing [&::-webkit-scrollbar]:hidden"
+      className="flex gap-[5px] overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] cursor-grab active:cursor-grabbing [&::-webkit-scrollbar]:hidden"
     >
       {children}
     </motion.div>

@@ -41,7 +41,7 @@ export function generateMetadata({ params }: { params: { slug: string } }): Meta
       description,
       // Falls through to the site-wide logo card where a project has no cover.
       ...(project.cover
-        ? { images: [{ url: project.cover, alt: project.alt }] }
+        ? { images: [{ url: project.cover.src, alt: project.alt }] }
         : {}),
     },
   };

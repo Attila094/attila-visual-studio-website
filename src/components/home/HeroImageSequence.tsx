@@ -1070,6 +1070,15 @@ export function HeroImageSequence() {
       // here fires another scroll event, which finds itself already at the
       // floor and falls through — so there is no loop.
       const s = run.current;
+      // …but only while this page is still the page. React tears a removed
+      // tree's passive effects down AFTER the incoming route has scrolled
+      // itself to the top, so this listener outlives the home page by a beat —
+      // long enough to catch the router's scroll-to-top and haul the new page
+      // straight back down to a floor that means nothing on it. That is what
+      // used to land a project page near its own foot instead of at the top.
+      // Asking whether our own DOM is still in the document settles it without
+      // betting on the order React runs its teardowns in.
+      if (!capProbe.current?.isConnected) return;
       if (s.done && s.floor > 0 && window.scrollY < s.floor) {
         window.scrollTo(0, s.floor);
         return;
