@@ -767,15 +767,32 @@ function Notes({
 
 /** Body copy — or, with nothing to set, the same `hamarosan` the menu tiles
  *  use, rather than filler that reads like a description. */
-function Body({ text, cue }: { text?: string; cue: Cue }) {
-  return (
-    <Cued cue={cue}>
-      {text ? (
-        <p className="text-sm leading-relaxed text-white/70">{text}</p>
-      ) : (
+/**
+ * A note's prose, as one paragraph or as several.
+ *
+ * Several arrive one after another rather than together: a note that runs to
+ * two paragraphs is two thoughts, and the page's whole manner is that each
+ * thought is brought in on its own beat. They share the note's cue and step
+ * off it, so whatever follows — a meta table, usually — still arrives after
+ * the last of them.
+ */
+function Body({ text, cue }: { text?: string | string[]; cue: Cue }) {
+  const paragraphs = typeof text === 'string' ? [text] : text;
+  if (!paragraphs?.length) {
+    return (
+      <Cued cue={cue}>
         <p className="text-sm uppercase tracking-[0.2em] text-white/25">hamarosan</p>
-      )}
-    </Cued>
+      </Cued>
+    );
+  }
+  return (
+    <>
+      {paragraphs.map((paragraph, i) => (
+        <Cued key={i} cue={after(cue, i)} className={i > 0 ? 'mt-3' : undefined}>
+          <p className="text-sm leading-relaxed text-white/70">{paragraph}</p>
+        </Cued>
+      ))}
+    </>
   );
 }
 

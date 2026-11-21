@@ -167,6 +167,9 @@ let firstMount = true;
  */
 const LANDING_SLACK = 8;
 
+/** How far a thumb must travel before its direction is taken as meant. */
+const TOUCH_SLOP = 4;
+
 
 /** Once landed, each image settles from 100% to 95% of its tile. */
 const FINAL_SCALE = 0.95;
@@ -1014,6 +1017,7 @@ export function HeroImageSequence() {
           // `onScroll`.
           s.floor = end;
           sequenceFloor.set(end);
+          armFloorGuards();
         }
       }
 
@@ -1069,6 +1073,10 @@ export function HeroImageSequence() {
       // before it is taken away, which reads as a flinch. Setting the scroll
       // here fires another scroll event, which finds itself already at the
       // floor and falls through — so there is no loop.
+      //
+      // This is the backstop now, for the scrolls nobody is holding: an anchor
+      // jump, a keyboard, a restored position. A thumb or a trackpad is turned
+      // away at the gesture instead, before any of this — see below.
       const s = run.current;
       // …but only while this page is still the page. React tears a removed
       // tree's passive effects down AFTER the incoming route has scrolled
@@ -1086,8 +1094,100 @@ export function HeroImageSequence() {
       if (!raf) raf = requestAnimationFrame(update);
     };
 
-    // No wheel or touch handler any more: the sequence never drives the page,
-    // so there is no scroll of its own to defend against the visitor's.
+    /**
+     * The floor, held at the gesture instead of at the scroll.
+     *
+     * The clamp above is the backstop, and on a wheel click or an anchor jump
+     * it is all that is needed: those move the page once and it is put back
+     * once. A thumb is not like that. A flick hands the scroll to the
+     * compositor, which keeps running it frame after frame on its own thread
+     * while `scroll` events arrive on ours late and in arrears — so the clamp
+     * spent a whole fling yanking the page down a frame after the fling had
+     * pulled it up, and the tiles shook for as long as the momentum lasted.
+     * Worse on a phone, where pulling down also slides the browser's own
+     * chrome in and the snap-back fought that too.
+     *
+     * So the pull is refused before a scroll exists to correct. A touchmove
+     * that would take the page above the floor is cancelled outright: no
+     * scroll, therefore no momentum, therefore nothing to fight. The page
+     * simply does not move, which is what the floor meant all along.
+     *
+     * The direction is decided once per gesture, on the first movement worth
+     * reading, and only for a drag that is more vertical than horizontal — a
+     * sideways drag belongs to whatever row is under the thumb, and a gesture
+     * let through stays let through, so reversing out of a wall never leaves
+     * the page stuck against it.
+     */
+    let guarded = false;
+    let startY = 0;
+    let startX = 0;
+    /** null until this gesture's direction is known; then: are we holding it? */
+    let holding: boolean | null = null;
+
+    const atFloor = () => {
+      const s = run.current;
+      return s.done && s.floor > 0 && window.scrollY <= s.floor + 1;
+    };
+
+    const onTouchStart = (e: TouchEvent) => {
+      const t = e.touches[0];
+      if (!t) return;
+      startY = t.clientY;
+      startX = t.clientX;
+      holding = null;
+    };
+
+    const onTouchMove = (e: TouchEvent) => {
+      if (holding === false) return;
+      const t = e.touches[0];
+      if (!t) return;
+      const dy = t.clientY - startY;
+      if (holding === null) {
+        const dx = t.clientX - startX;
+        if (Math.abs(dy) < TOUCH_SLOP) return;
+        // Pulling the content DOWN is asking to go UP the page.
+        holding = dy > 0 && Math.abs(dy) > Math.abs(dx) && atFloor();
+        if (!holding) return;
+      }
+      // Still at the floor? A gesture that began there can be carried on past
+      // it by a `scrollTo` elsewhere; let go rather than freeze the page.
+      if (!atFloor()) {
+        holding = false;
+        return;
+      }
+      e.preventDefault();
+    };
+
+    // The same for a trackpad, which flings exactly as a thumb does and shook
+    // in exactly the same way. A mouse wheel turns this into the wall it
+    // already was, one click at a time.
+    const onWheel = (e: WheelEvent) => {
+      if (e.deltaY < 0 && atFloor()) e.preventDefault();
+    };
+
+    /**
+     * Only from the landing on, and never before.
+     *
+     * A non-passive `touchmove` or `wheel` listener tells the browser the main
+     * thread may cancel the scroll, so it can no longer run that scroll on the
+     * compositor alone — the whole page scrolls through our thread for as long
+     * as one is attached. The sequence is the one stretch where that would be
+     * felt, and the floor does not exist yet while it plays. So they go on at
+     * the moment the floor appears, and the sequence itself is scrolled with
+     * nothing of ours in the way.
+     */
+    const armFloorGuards = () => {
+      if (guarded) return;
+      guarded = true;
+      window.addEventListener('touchstart', onTouchStart, { passive: true });
+      // Not passive: cancelling the gesture is the whole point.
+      window.addEventListener('touchmove', onTouchMove, { passive: false });
+      window.addEventListener('wheel', onWheel, { passive: false });
+    };
+    // A soft navigation back to a page whose sequence has already played
+    // arrives with the floor already set, and `done` is never crossed again.
+    if (run.current.done) armFloorGuards();
+
     update();
     window.addEventListener('scroll', onScroll, { passive: true });
     window.addEventListener('resize', update);
@@ -1095,6 +1195,9 @@ export function HeroImageSequence() {
       if (raf) cancelAnimationFrame(raf);
       window.removeEventListener('scroll', onScroll);
       window.removeEventListener('resize', update);
+      window.removeEventListener('touchstart', onTouchStart);
+      window.removeEventListener('touchmove', onTouchMove);
+      window.removeEventListener('wheel', onWheel);
     };
   }, [progress, geoTick, bigTop, bigLeft, bigW, bigH, fontTick]);
 

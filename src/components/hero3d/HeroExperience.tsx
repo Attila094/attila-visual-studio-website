@@ -241,7 +241,14 @@ export function HeroExperience({ onRevealed }: { onRevealed?: () => void } = {})
               // Tagged so the scroll image-sequence can measure the logo's live
               // bottom edge — it keeps docking, so that target keeps moving.
               data-hero-logo
-              className="relative aspect-[2036/711] w-[64vw] max-w-[874px]"
+              // A tenth smaller from `lg` up, where there is a whole desktop
+              // window around it and 64vw read as crowding the edges. Phones
+              // and tablets keep the full width: there the logo is the page.
+              //
+              // Only the resting logo moves. What it docks to is measured from
+              // this box's own height (`dockScale`, above), so the logo in the
+              // menu bar comes out the same size as it always did.
+              className="relative aspect-[2036/711] w-[64vw] max-w-[874px] lg:w-[57.6vw] lg:max-w-[787px]"
               style={{ opacity: logoOpacity }}
             >
               <LogoDraw

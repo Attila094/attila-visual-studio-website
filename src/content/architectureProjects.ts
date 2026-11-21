@@ -48,7 +48,8 @@ export const ARCH_SECTION_LABELS: Record<ArchSectionId, string> = {
 /** One titled paragraph inside a section — "Település", "Beépítési koncepció". */
 export interface ArchNote {
   heading?: string;
-  body: string;
+  /** One paragraph, or several — each brought in on its own beat. */
+  body: string | string[];
 }
 
 /**
@@ -214,7 +215,7 @@ const EPITESZET: ArchProject[] = [
     },
     alt: 'Rád nyeregtetős modern családi ház látványterv zöld környezetben',
     description:
-      'Nyeregtetős, kortárs családi ház a zöld környezetbe simulva. A terv a hagyományos tömeg és a modern nyílászárók visszafogott, arányos találkozására épít.',
+      'Kortárs családi ház, konzolosan kialakított pajtaszerű tömegformálással. Homlokzaton átforduló égetett fa burkolattal.',
     // "Rad - line.mov" from the project folder: Hungary drawn in outline, with
     // the pin dropping on Rád. 90 frames, keyed white-on-nothing.
     notes: {
@@ -223,6 +224,16 @@ const EPITESZET: ArchProject[] = [
         {
           body:
             'Rád egy nyugodt, közel kétezer fős község Pest vármegyében, a Váci járásban, a Cserhát és a Gödöllői-dombság találkozásánál, Váctól alig néhány kilométerre. Az Árpád-kor óta lakott település legismertebb látnivalói közé tartozik a 18. századi barokk római katolikus templom és a késő barokk-copf stílusú Muslay-kúria, amelyeket lankás, erdős és kirándulásra is alkalmas dombvidéki környezet vesz körül. Falusias hangulata és a fővároshoz való közelsége miatt ma is kedvelt, csendes lakó- és pihenőhely.',
+        },
+      ],
+      // 03's one note column: "Beépítési koncepció", in the fifth beside the
+      // maquette, with the meta table under it.
+      beepites: [
+        {
+          body: [
+            'A telek egy rendkívül nagy kiterjedésű, közel 100 méter hosszúsággal és 10 méter szélességgel és emellett jelentős szintkülönbséggel is rendelkezik. A jellemzően kialakult beépítési mód az utcában a telkek alsó részében történik. A telkek hátsó, nagy lejtéssel rendelkező része jellemzően nem kerül beépítésre.',
+            'A környezetbe illeszkedést figyelembe véve az épület a telek alsó részén került elhelyezésre, igazodva a szabályozási kötöttségekre és a telek szintemelkedésére.',
+          ],
         },
       ],
     },
