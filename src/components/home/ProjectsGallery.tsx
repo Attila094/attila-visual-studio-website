@@ -330,23 +330,22 @@ function ArchitectSection({
  * project cannot appear in the menu without a page existing for it.
  */
 const toEntries = (projects: ArchProject[]): ArchitectEntry[] =>
-  projects.map(({ name, slug, cover }) => ({
+  projects.map(({ name, slug, cover, linksTo }) => ({
     name,
-    slug: cover ? slug : undefined,
+    // No morph key for an entry that leads somewhere else: the page it opens
+    // is carrying its own project's hero, and handing this tile that hero's
+    // key would have two tiles in the two lists claiming one shared element.
+    slug: cover && !linksTo ? slug : undefined,
     cover,
-    href: archProjectHref(slug),
+    href: archProjectHref(linksTo ?? slug),
   }));
-
-/** The open slot at the end of Építészet: an invitation, not a building, so it
- *  leads to the enquiry form and has no page of its own. */
-const PROJECTED: ArchitectEntry = { name: 'Projected', href: '/contact' };
 
 function ArchitectLayout() {
   return (
     <div className="space-y-10 rounded-3xl bg-[#111111] p-3 ring-1 ring-white/10 sm:p-5">
       <ArchitectSection
         title="Építészet"
-        entries={[...toEntries(getArchProjectsBySection('epiteszet')), PROJECTED]}
+        entries={toEntries(getArchProjectsBySection('epiteszet'))}
       />
       <ArchitectSection
         title="Belsőépítészet"

@@ -156,6 +156,17 @@ export interface ArchProject {
   media?: Partial<Record<ArchSectionId, string[]>>;
   /** A scrubbed line animation for a section, in place of its plate. */
   sequences?: Partial<Record<ArchSectionId, ArchSequence>>;
+  /**
+   * Another project's slug, when this one is a way in to that one rather than
+   * a page of its own — the Rád kitchen is a room in the Rád house, not a
+   * second building, so both lines in the menu lead to the same page.
+   *
+   * It moves the link only. The tile keeps its own cover and its own place in
+   * its own list, and gives up the shared-element morph: the page it arrives
+   * at is carrying another project's hero, and two tiles claiming one morph
+   * key would fight over it.
+   */
+  linksTo?: string;
   /** The band under the hero. Empty until a project's stills are in. */
   strip?: ArchImage[];
 }
@@ -189,10 +200,6 @@ const radStill = (file: string, width: number, height: number, alt: string): Arc
 
 /**
  * "Építészet", in the order the menu lists it.
- *
- * `Projected` is deliberately absent: it is the open slot at the end of the row
- * that leads to the contact form, not a project, and giving it a page would
- * invent a sixth building.
  */
 const EPITESZET: ArchProject[] = [
   {
@@ -293,12 +300,13 @@ const EPITESZET: ArchProject[] = [
     alt: 'Hertelend építészeti látványterv',
   },
   {
-    slug: 'epiteszet-ujpest',
+    slug: 'epiteszet-balaton',
     section: 'epiteszet',
-    name: 'Újpest',
-    title: 'Újpest',
-    location: 'Budapest — Újpest',
-    alt: 'Újpest építészeti projekt',
+    name: 'Balaton',
+    title: 'Balaton',
+    location: 'Balaton',
+    cover: coverOf('epiteszet/balaton', 1440, 1920),
+    alt: 'Balatoni építészeti látványterv',
   },
   {
     slug: 'epiteszet-budapest-hosszuret',
@@ -313,6 +321,15 @@ const EPITESZET: ArchProject[] = [
 
 /** "Belsőépítészet", in the order the menu lists it. */
 const BELSOEPITESZET: ArchProject[] = [
+  {
+    slug: 'belsoepiteszet-ujpest',
+    section: 'belsoepiteszet',
+    name: 'Újpest',
+    title: 'Újpest',
+    location: 'Budapest — Újpest',
+    cover: coverOf('belsoepiteszet/ujpest', 1800, 2400),
+    alt: 'Újpesti belsőépítészeti látványterv',
+  },
   {
     slug: 'belsoepiteszet-pecs-rokus',
     section: 'belsoepiteszet',
@@ -331,6 +348,8 @@ const BELSOEPITESZET: ArchProject[] = [
     designer: 'The Line Studio',
     year: '2026',
     cover: coverOf('belsoepiteszet/rad', 1200, 1600),
+    // The kitchen is part of the house, so the menu sends both to the house.
+    linksTo: 'epiteszet-rad',
     alt: 'Rád belsőépítészeti látványterv: fa burkolatú konyha bárszékekkel',
     description:
       'Meleg tónusú faburkolat és visszafogott kőfelületek: a konyha a ház közös terének folytatása, nem külön helyiség. A bárszékes pult a napi használat és a vendéglátás közötti átmenetet oldja fel.',
@@ -345,15 +364,6 @@ const BELSOEPITESZET: ArchProject[] = [
     alt: 'Hévízi belsőépítészeti látványterv',
   },
   {
-    slug: 'belsoepiteszet-budapest-pinty',
-    section: 'belsoepiteszet',
-    name: 'Budapest - Pinty',
-    title: 'Budapest — Pinty',
-    location: 'Budapest',
-    cover: coverOf('belsoepiteszet/budapest-pinty', 2400, 2400),
-    alt: 'Budapest, Pinty utcai belsőépítészeti látványterv',
-  },
-  {
     slug: 'belsoepiteszet-pecs-petrus',
     section: 'belsoepiteszet',
     name: 'Pécs - Petrus',
@@ -361,23 +371,6 @@ const BELSOEPITESZET: ArchProject[] = [
     location: 'Pécs',
     cover: coverOf('belsoepiteszet/pecs-petrus', 640, 915),
     alt: 'Pécs, Petrus belsőépítészeti látványterv',
-  },
-  {
-    slug: 'belsoepiteszet-ujpest',
-    section: 'belsoepiteszet',
-    name: 'Újpest',
-    title: 'Újpest',
-    location: 'Budapest — Újpest',
-    alt: 'Újpest belsőépítészeti projekt',
-  },
-  {
-    slug: 'belsoepiteszet-godollo',
-    section: 'belsoepiteszet',
-    name: 'Gödöllő',
-    title: 'Gödöllő',
-    location: 'Gödöllő',
-    cover: coverOf('belsoepiteszet/godollo', 2000, 2000),
-    alt: 'Gödöllői belsőépítészeti látványterv',
   },
 ];
 
