@@ -15,6 +15,35 @@ const PanoramaSphere = dynamic(
   { ssr: false },
 );
 
+/**
+ * What a still tile is actually as wide as.
+ *
+ * Not a guess: the grid is two columns at every width, inside a shell that
+ * stops at 1440 — so a closed tile is half of (the window, less the section's
+ * padding and the panel's, less the column gap), and an open one spans the
+ * lot. The old `sizes` said 30vw, which would be right for three columns and
+ * was wrong by half for two: the browser dutifully fetched a 384px copy for a
+ * 571px box and painted it 1.5x too big. That, and not the encoding, is what
+ * made these look soft.
+ *
+ * Padding is px-6 + p-5 from `sm` up (88px in all) and px-4 + p-3 below it
+ * (56px), and the gap between the columns is 12.
+ */
+const STILL_SIZES =
+  '(min-width: 1440px) 670px, (min-width: 640px) calc(50vw - 50px), calc(50vw - 34px)';
+const STILL_SIZES_OPEN =
+  '(min-width: 1440px) 1352px, (min-width: 640px) calc(100vw - 88px), calc(100vw - 56px)';
+
+/**
+ * Above next/image's default of 75.
+ *
+ * These are architectural renders — long clean gradients across a sky, fine
+ * mullions, foliage — and they are already a lossy WebP before the optimizer
+ * sees them. A second pass at 75 on top of the first was visible in exactly
+ * those places.
+ */
+const STILL_QUALITY = 90;
+
 type Filter = 'still' | 'panoramic' | 'animation';
 
 const FILTERS: { id: Filter; label: string }[] = [
@@ -129,7 +158,8 @@ export function VisualizationGallery() {
                   src={still.src}
                   alt="Építészeti látványterv"
                   fill
-                  sizes={isOpen ? '(min-width: 768px) 60vw, 92vw' : '(min-width: 768px) 30vw, 46vw'}
+                  sizes={isOpen ? STILL_SIZES_OPEN : STILL_SIZES}
+                  quality={STILL_QUALITY}
                   className="object-cover"
                 />
               </motion.button>
